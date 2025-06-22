@@ -1,6 +1,3 @@
-// -------------------------------------------------------------
-// Firebase 설정
-// -------------------------------------------------------------
 const firebaseConfig = {
     apiKey: "AIzaSyCBimrNdCRm88oFQZtk2ZwTOjnhrFt9y8U",
     authDomain: "honey-db.firebaseapp.com",
@@ -12,9 +9,14 @@ const firebaseConfig = {
 const app = firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-// -------------------------------------------------------------
-// HTML 요소 가져오기
-// -------------------------------------------------------------
+const modeToggleButton = document.getElementById('mode-toggle-btn');
+const viewerContainer = document.getElementById('viewer-container');
+const adminContainer = document.getElementById('admin-container');
+const searchInput = document.getElementById('searchInput');
+const searchButton = document.getElementById('searchButton');
+const viewerMainContent = document.getElementById('mainContentContainer');
+const viewerResults = document.getElementById('resultsContainer');
+const breadcrumbContainer = document.getElementById('breadcrumbContainer');
 const treeContainer = document.getElementById('tree-container');
 const editorContainer = document.getElementById('editor-container');
 const resizer = document.getElementById('resizer');
@@ -22,41 +24,132 @@ const treeRoot = document.getElementById('tree-root');
 const editorContent = document.getElementById('editor-content');
 const addNewButton = document.getElementById('add-new-button');
 
-// -------------------------------------------------------------
-// 상태 관리 변수
-// -------------------------------------------------------------
+let breadcrumbTrail = [];
 let currentSelectedDocId = null;
-let currentSelectedItemElement = null;
 let allDocsMap = new Map();
-
-// -------------------------------------------------------------
-// LocalStorage 관련 도우미 함수
-// -------------------------------------------------------------
 const EXPANDED_STATE_KEY = 'treeExpandedState';
 
 function getExpandedState() {
     const state = localStorage.getItem(EXPANDED_STATE_KEY);
     return state ? JSON.parse(state) : [];
 }
-
 function saveExpandedState(expandedIds) {
     localStorage.setItem(EXPANDED_STATE_KEY, JSON.stringify(expandedIds));
 }
 
-// -------------------------------------------------------------
-// 테스트 데이터 소스
-// -------------------------------------------------------------
-const dummyThemes = {
-    "지상동물": ["사자", "호랑이", "코끼리", "기린", "토끼", "하마", "얼룩말", "원숭이", "캥거루", "판다"],
-    "해산물": ["고등어", "오징어", "새우", "꽃게", "광어", "연어", "참치", "문어", "전복", "가리비"],
-    "식물": ["장미", "소나무", "민들레", "해바라기", "튤립", "선인장", "대나무", "은행나무", "단풍나무", "국화"],
-    "과일": ["사과", "바나나", "딸기", "포도", "오렌지", "수박", "파인애플", "체리", "복숭아", "망고"]
-};
+function renderBreadcrumbs() {
+    breadcrumbContainer.innerHTML = '';
+    breadcrumbTrail.forEach((item, index) => {
+        let element;
+        if (index === breadcrumbTrail.length - 1) {
+            element = document.createElement('span');
+            element.className = 'breadcrumb-current';
+            element.textContent = item.title;
+        } else {
+            element = document.createElement('a');
+            element.className = 'breadcrumb-item';
+            element.textContent = item.title;
+            element.onclick = (e) => {
+                e.preventDefault();
+                navigateTo(item.id, item.title);
+            };
+        }
+        breadcrumbContainer.appendChild(element);
+        if (index < breadcrumbTrail.length - 1) {
+            const separator = document.createElement('span');
+            separator.className = 'breadcrumb-separator';
+            separator.textContent = '>';
+            breadcrumbContainer.appendChild(separator);
+        }
+    });
+}
 
+async function navigateTo(docId, docTitle) {
+    const existingIndex = breadcrumbTrail.findIndex(item => item.id === docId);
+    if (existingIndex !== -1) {
+        breadcrumbTrail = breadcrumbTrail.slice(0, existingIndex + 1);
+    } else {
+        breadcrumbTrail.push({ id: docId, title: docTitle });
+    }
+    renderBreadcrumbs();
+    viewerMainContent.innerHTML = '';
+    viewerResults.innerHTML = '<p class="info-text">목록을 불러오는 중...</p>';
+    if (docId) {
+        try {
+            const docSnap = await db.collection("helps").doc(docId).get();
+            if (docSnap.exists) {
+                const data = docSnap.data();
+                let keywordsHtml = '';
+                if (data.keywords && data.keywords.length > 0) {
+                    keywordsHtml = `<div class="keyword-tag-container"><h4>관련 키워드</h4>${data.keywords.map(kw => `<span class="keyword-tag">${kw}</span>`).join('')}</div>`;
+                }
+                viewerMainContent.innerHTML = `<h2>${data.title}</h2><p>${data.contents || '내용이 없습니다.'}</p>${keywordsHtml}`;
+            } else {
+                 viewerMainContent.innerHTML = '<h4>문서가 존재하지 않습니다.</h4>';
+            }
+        } catch(error) {
+            console.error("메인 컨텐츠 로딩 오류:", error);
+            viewerMainContent.innerHTML = '<h4>컨텐츠를 불러오는 데 실패했습니다.</h4>';
+        }
+    } else {
+         viewerMainContent.innerHTML = '<h2>Home</h2><p>최상위 문서 목록입니다.</p>';
+    }
+    try {
+        let query = docId === null
+            ? db.collection("helps").where("parentIds", "==", [])
+            : db.collection("helps").where("parentIds", "array-contains", docId);
+        const snapshot = await query.get();
+        viewerResults.innerHTML = '';
+        if (snapshot.empty) {
+            viewerResults.innerHTML = '<p class="info-text">하위 항목이 없습니다.</p>';
+        } else {
+            snapshot.forEach(childDoc => {
+                const childData = childDoc.data();
+                const resultItem = document.createElement('div');
+                resultItem.className = 'result-item';
+                resultItem.innerHTML = `<h3>${childData.title}</h3>`;
+                resultItem.onclick = () => navigateTo(childDoc.id, childData.title);
+                viewerResults.appendChild(resultItem);
+            });
+        }
+    } catch (error) {
+        console.error("하위 목록 탐색 중 오류:", error);
+        viewerResults.innerHTML = '<p class="info-text">하위 목록을 불러오는 데 실패했습니다.</p>';
+    }
+}
 
-// -------------------------------------------------------------
-// 핵심 기능 함수
-// -------------------------------------------------------------
+async function performSearch() {
+    const searchTerm = searchInput.value.trim();
+    if (!searchTerm) return;
+    viewerMainContent.innerHTML = `<h2>'${searchTerm}' 검색 결과</h2>`;
+    breadcrumbContainer.innerHTML = '';
+    viewerResults.innerHTML = '<p class="info-text">검색 중입니다...</p>';
+    try {
+        const snapshot = await db.collection("helps").where("keywords", "array-contains", searchTerm).get();
+        viewerResults.innerHTML = '';
+        if (snapshot.empty) {
+            viewerResults.innerHTML = '<p class="info-text">검색 결과가 없습니다.</p>';
+        } else {
+            const regex = new RegExp(searchTerm, 'gi');
+            snapshot.forEach(doc => {
+                const data = doc.data();
+                const resultItem = document.createElement('div');
+                resultItem.className = 'result-item';
+                const highlightedTitle = data.title.replace(regex, `<mark class="highlight">$&</mark>`);
+                const highlightedContents = (data.contents || '').replace(regex, `<mark class="highlight">$&</mark>`);
+                resultItem.innerHTML = `<h3>${highlightedTitle}</h3><p>${highlightedContents}</p><p style="margin-top: 10px; font-size: 12px; color: #7f8c8d;">매칭 키워드: ${searchTerm}</p>`;
+                resultItem.onclick = () => {
+                    breadcrumbTrail = [];
+                    navigateTo(doc.id, data.title);
+                };
+                viewerResults.appendChild(resultItem);
+            });
+        }
+    } catch (error) {
+        console.error("검색 중 오류 발생:", error);
+        resultsContainer.innerHTML = '<p class="info-text">검색에 실패했습니다.</p>';
+    }
+}
 
 function prepareNewDocumentForm() {
     currentSelectedDocId = null; 
@@ -73,29 +166,19 @@ async function saveChanges() {
     const newContents = document.getElementById('editor-contents-textarea').value;
     const parentSpans = document.querySelectorAll('#parent-display .parent-tag');
     const newParentIds = Array.from(parentSpans).map(span => span.dataset.parentId);
-    
     const newKeywords = [];
     document.querySelectorAll('.tag-item').forEach(tag => {
         newKeywords.push(tag.firstChild.textContent.trim());
     });
-
     if (!newTitle) {
         alert("제목은 필수 항목입니다.");
         return;
     }
-
     const saveButton = document.getElementById('save-button');
     saveButton.textContent = '저장 중...';
     saveButton.disabled = true;
-
     try {
-        const docData = {
-            title: newTitle,
-            contents: newContents,
-            keywords: newKeywords,
-            parentIds: newParentIds
-        };
-
+        const docData = { title: newTitle, contents: newContents, keywords: newKeywords, parentIds: newParentIds };
         if (currentSelectedDocId) {
             await db.collection("helps").doc(currentSelectedDocId).update(docData);
         } else {
@@ -105,7 +188,7 @@ async function saveChanges() {
         await buildAndRenderTree();
     } catch (error) {
         console.error("저장 중 오류 발생:", error);
-        alert("저장에 실패했습니다. 콘솔을 확인해주세요.");
+        alert("저장에 실패했습니다.");
     } finally {
         if(document.getElementById('save-button')) {
             document.getElementById('save-button').textContent = '저장하기';
@@ -127,43 +210,14 @@ async function deleteDocument() {
         await buildAndRenderTree();
     } catch (error) {
         console.error("삭제 중 오류 발생:", error);
-        alert("삭제에 실패했습니다. 콘솔을 확인해주세요.");
+        alert("삭제에 실패했습니다.");
     }
 }
 
 function loadDocumentIntoEditor(docId, docData) {
     currentSelectedDocId = docId;
     const parentIds = docData.parentIds || [];
-
-    editorContent.innerHTML = `
-        <h3>${docData.title || '새 문서 작성'}</h3>
-        <div class="form-group">
-            <label>제목</label>
-            <input type="text" id="editor-title-input" value="${docData.title || ''}">
-        </div>
-        <div class="form-group">
-            <label>내용</label>
-            <textarea id="editor-contents-textarea" rows="15">${docData.contents || ''}</textarea>
-        </div>
-        <div class="form-group">
-            <label>검색 키워드</label>
-            <div id="tag-container" class="tag-input-container">
-                <input type="text" id="tag-input" placeholder="키워드 입력 후 Enter">
-            </div>
-        </div>
-        <div class="form-group">
-            <label>부모 문서</label>
-            <div id="parent-display-wrapper">
-                <div id="parent-display"></div>
-                <button id="change-parent-btn">변경</button>
-            </div>
-        </div>
-        <div class="button-group">
-            <button id="save-button">저장하기</button>
-            <button id="delete-button">삭제하기</button>
-        </div>
-    `;
-
+    editorContent.innerHTML = `<h3>${docData.title || '새 문서 작성'}</h3><div class="form-group"><label>제목</label><input type="text" id="editor-title-input" value="${docData.title || ''}"></div><div class="form-group"><label>내용</label><textarea id="editor-contents-textarea" rows="6">${docData.contents || ''}</textarea></div><div class="form-group"><label>검색 키워드</label><div id="tag-container" class="tag-input-container"><input type="text" id="tag-input" placeholder="키워드 입력 후 Enter"></div></div><div class="form-group"><label>부모 문서</label><div id="parent-display-wrapper"><div id="parent-display"></div><button id="change-parent-btn">변경</button></div></div><div class="button-group"><button id="save-button">저장하기</button><button id="delete-button">삭제하기</button></div>`;
     const parentDisplay = document.getElementById('parent-display');
     parentDisplay.innerHTML = '';
     if (parentIds.length > 0) {
@@ -180,7 +234,6 @@ function loadDocumentIntoEditor(docId, docData) {
     } else {
         parentDisplay.textContent = '없음';
     }
-
     document.getElementById('save-button').onclick = saveChanges;
     document.getElementById('delete-button').onclick = deleteDocument;
     document.getElementById('change-parent-btn').onclick = () => setupParentSelectorModal(parentIds);
@@ -190,9 +243,7 @@ function loadDocumentIntoEditor(docId, docData) {
 function setupTagInput(keywords) {
     const container = document.getElementById('tag-container');
     const input = document.getElementById('tag-input');
-    keywords.forEach(keyword => {
-        container.insertBefore(createTag(keyword), input);
-    });
+    keywords.forEach(keyword => container.insertBefore(createTag(keyword), input));
     input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ',') {
             e.preventDefault();
@@ -204,9 +255,7 @@ function setupTagInput(keywords) {
         }
     });
     container.addEventListener('click', (e) => {
-        if (e.target.classList.contains('remove-tag')) {
-            e.target.parentElement.remove();
-        }
+        if (e.target.classList.contains('remove-tag')) e.target.parentElement.remove();
     });
 }
 
@@ -220,20 +269,9 @@ function createTag(text) {
 function setupParentSelectorModal(currentParentIds) {
     const modalOverlay = document.createElement('div');
     modalOverlay.className = 'modal-overlay';
-    modalOverlay.innerHTML = `
-        <div class="modal-content">
-            <h3>부모 문서 선택</h3>
-            <input type="text" id="modal-search-input" placeholder="검색으로 필터링...">
-            <div id="modal-tree-container"></div>
-            <div class="modal-buttons">
-                <button id="modal-cancel">취소</button>
-                <button id="modal-select">선택 완료</button>
-            </div>
-        </div>
-    `;
+    modalOverlay.innerHTML = `<div class="modal-content"><h3>부모 문서 선택</h3><input type="text" id="modal-search-input" placeholder="검색으로 필터링..."><div id="modal-tree-container"></div><div class="modal-buttons"><button id="modal-cancel">취소</button><button id="modal-select">선택 완료</button></div></div>`;
     document.body.appendChild(modalOverlay);
     modalOverlay.style.display = 'flex';
-
     const modalTreeContainer = document.getElementById('modal-tree-container');
     const searchInput = document.getElementById('modal-search-input');
     
@@ -245,13 +283,11 @@ function setupParentSelectorModal(currentParentIds) {
         const filteredTree = filterText ? filterTree(tree, filterText.toLowerCase()) : tree;
         renderTree(filteredTree, rootUl, true, currentParentIds);
     };
-
     renderModalTree();
     searchInput.addEventListener('keyup', () => renderModalTree(searchInput.value));
 
     document.getElementById('modal-select').onclick = () => {
-        const selectedIds = [];
-        const selectedTitles = [];
+        const selectedIds = [], selectedTitles = [];
         modalTreeContainer.querySelectorAll('input[type="checkbox"]:checked').forEach(cb => {
             selectedIds.push(cb.dataset.id);
             selectedTitles.push(cb.dataset.title);
@@ -271,30 +307,25 @@ function setupParentSelectorModal(currentParentIds) {
         }
         closeModal();
     };
-    
     const closeModal = () => document.body.removeChild(modalOverlay);
     document.getElementById('modal-cancel').onclick = closeModal;
     modalOverlay.onclick = (e) => { if (e.target === modalOverlay) closeModal(); };
 }
 
-function renderTree(nodes, container, isModal = false, checkedIds = []) {
+function renderTree(nodes, container, isModal, checkedIds = []) {
     nodes.forEach(node => {
         const listItem = document.createElement('li');
         const hasChildren = node.children && node.children.length > 0;
         const itemContainer = document.createElement('div');
         itemContainer.className = 'item-container';
-
         if (hasChildren) {
             const expandedIds = isModal ? [] : getExpandedState();
             const isCollapsed = !expandedIds.includes(node.id);
-
             if (!isModal && isCollapsed) listItem.classList.add('collapsed');
             else if (isModal) listItem.classList.add('collapsed');
-
             const toggleBtn = document.createElement('span');
             toggleBtn.className = 'toggle-btn';
             toggleBtn.textContent = listItem.classList.contains('collapsed') ? '+' : '-';
-            
             toggleBtn.onclick = (e) => {
                 e.stopPropagation();
                 const nowIsCollapsed = listItem.classList.toggle('collapsed');
@@ -316,7 +347,6 @@ function renderTree(nodes, container, isModal = false, checkedIds = []) {
             emptySpan.style.width = '20px';
             itemContainer.appendChild(emptySpan);
         }
-
         if (isModal) {
             const checkbox = document.createElement('input');
             checkbox.type = 'checkbox';
@@ -327,12 +357,10 @@ function renderTree(nodes, container, isModal = false, checkedIds = []) {
             if (node.id === currentSelectedDocId) checkbox.disabled = true;
             itemContainer.appendChild(checkbox);
         }
-
         const titleSpan = document.createElement('span');
         titleSpan.className = 'tree-item-title';
         titleSpan.textContent = node.data.title;
         titleSpan.dataset.id = node.id;
-
         if (!isModal) {
             titleSpan.draggable = true;
             titleSpan.addEventListener('dragstart', (e) => { e.stopPropagation(); e.dataTransfer.setData('text/plain', node.id); e.dataTransfer.effectAllowed = 'move'; setTimeout(() => e.target.classList.add('dragging'), 0); });
@@ -344,14 +372,11 @@ function renderTree(nodes, container, isModal = false, checkedIds = []) {
                 const currentActive = document.querySelector('#tree-root .tree-item-title.active');
                 if (currentActive) currentActive.classList.remove('active');
                 titleSpan.classList.add('active');
-                currentSelectedItemElement = titleSpan;
                 loadDocumentIntoEditor(node.id, node.data);
             };
         }
-        
         itemContainer.appendChild(titleSpan);
         listItem.appendChild(itemContainer);
-
         if (hasChildren) {
             const childrenContainer = document.createElement('ul');
             listItem.appendChild(childrenContainer);
@@ -384,7 +409,6 @@ async function handleDrop(e) {
     const draggedDocId = e.dataTransfer.getData('text/plain');
     const newParentId = e.target.dataset.id;
     if (draggedDocId === newParentId) return;
-
     let tempId = newParentId;
     while(tempId) {
         if (tempId === draggedDocId) {
@@ -396,7 +420,6 @@ async function handleDrop(e) {
         tempId = parentNode.data.parentIds && parentNode.data.parentIds.length > 0 ? parentNode.data.parentIds[0] : null;
     }
     try {
-        // 드래그 앤 드롭은 부모를 하나만 지정하는 것으로 가정 (여러 부모 중 하나로 이동)
         await db.collection("helps").doc(draggedDocId).update({ parentIds: [newParentId] });
         buildAndRenderTree();
     } catch (error) {
@@ -467,25 +490,9 @@ function handleMouseUp() {
     document.removeEventListener('mouseup', handleMouseUp);
 }
 
-const log = (message) => {
-    const logContainer = document.getElementById('test-log');
-    if (logContainer) logContainer.innerHTML = `> ${message}<br>` + logContainer.innerHTML;
-};
-async function createSingleDummy() {
-    if (!confirm("랜덤 테마의 더미 문서 1개를 생성하시겠습니까?")) return;
-    log("더미 문서 1개 생성 시작...");
-    try {
-        const categories = Object.keys(dummyThemes);
-        const randomCategory = categories[Math.floor(Math.random() * categories.length)];
-        const items = dummyThemes[randomCategory];
-        const randomItem = items[Math.floor(Math.random() * items.length)];
-        await db.collection("helps").add({ title: randomItem, contents: `이것은 ${randomCategory} 카테고리의 ${randomItem} 문서입니다.`, keywords: ["더미", "테스트", randomItem, randomCategory], parentIds: [] });
-        log("✅ 더미 문서 1개 생성 완료!");
-        buildAndRenderTree();
-    } catch (e) {
-        log("❌ 생성 실패: " + e.message); console.error(e);
-    }
-}
+const dummyThemes = { "지상동물": ["사자", "호랑이", "코끼리", "기린", "토끼", "하마", "얼룩말", "원숭이", "캥거루", "판다"], "해산물": ["고등어", "오징어", "새우", "꽃게", "광어", "연어", "참치", "문어", "전복", "가리비"], "식물": ["장미", "소나무", "민들레", "해바라기", "튤립", "선인장", "대나무", "은행나무", "단풍나무", "국화"], "과일": ["사과", "바나나", "딸기", "포도", "오렌지", "수박", "파인애플", "체리", "복숭아", "망고"] };
+const log = (message) => { const logContainer = document.getElementById('test-log'); if (logContainer) logContainer.innerHTML = `> ${message}<br>` + logContainer.innerHTML; };
+async function createSingleDummy() { if (!confirm("랜덤 테마의 더미 문서 1개를 생성하시겠습니까?")) return; log("더미 문서 1개 생성 시작..."); try { const categories = Object.keys(dummyThemes); const randomCategory = categories[Math.floor(Math.random() * categories.length)]; const items = dummyThemes[randomCategory]; const randomItem = items[Math.floor(Math.random() * items.length)]; await db.collection("helps").add({ title: randomItem, contents: `이것은 ${randomCategory} 카테고리의 ${randomItem} 문서입니다.`, keywords: ["더미", "테스트", randomItem, randomCategory], parentIds: [] }); log("✅ 더미 문서 1개 생성 완료!"); buildAndRenderTree(); } catch (e) { log("❌ 생성 실패: " + e.message); console.error(e); } }
 async function createThematicDummies() {
     const docCount = 100;
     if (!confirm(`정말로 테마 더미 문서 ${docCount}개를 생성하시겠습니까?`)) return;
@@ -497,12 +504,12 @@ async function createThematicDummies() {
         for (let i = 0; i < docCount; i++) {
             const docRef = db.collection("helps").doc();
             if (i % 10 === 0) {
-                const categoryName = categories[ (i/10) % categories.length ];
+                const categoryName = categories[Math.floor(i / 10) % categories.length];
                 parentId = docRef.id;
                 batch.set(docRef, { title: categoryName, contents: `${categoryName}에 대한 모든 문서들을 포함합니다.`, keywords: ["부모", "카테고리", categoryName], parentIds: [] });
             } else {
-                const parentNode = allDocsMap.get(parentId);
-                const categoryName = parentNode ? parentNode.data.title : categories[0];
+                const parentNodeData = parentId ? allDocsMap.get(parentId)?.data : null;
+                const categoryName = parentNodeData ? parentNodeData.title : categories[0];
                 const items = dummyThemes[categoryName] || [];
                 const itemName = items[i % items.length] || `항목 ${i}`;
                 batch.set(docRef, { title: itemName, contents: `이것은 ${itemName}에 대한 내용입니다.`, keywords: ["자식", "테스트", itemName, categoryName], parentIds: parentId ? [parentId] : [] });
@@ -517,7 +524,7 @@ async function createThematicDummies() {
     }
 }
 async function deleteAllDocuments() {
-    if (!confirm("⚠️ 경고! 'helps' 컬렉션의 모든 문서를 영구적으로 삭제합니다. 정말로 진행하시겠습니까? 이 작업은 되돌릴 수 없습니다!")) return;
+    if (!confirm("⚠️ 경고! 'helps' 컬렉션의 모든 문서를 영구적으로 삭제합니다. 이 작업은 되돌릴 수 없습니다!")) return;
     log("전체 문서 삭제 시작...");
     try {
         const snapshot = await db.collection("helps").get();
@@ -530,7 +537,7 @@ async function deleteAllDocuments() {
         snapshot.forEach(doc => {
             currentBatch.delete(doc.ref);
             currentBatchSize++;
-            if (currentBatchSize === 500) {
+            if (currentBatchSize === 499) {
                 batches.push(currentBatch);
                 currentBatch = db.batch();
                 currentBatchSize = 0;
@@ -547,9 +554,41 @@ async function deleteAllDocuments() {
     }
 }
 
+function toggleMode() {
+    const isViewerVisible = viewerContainer.style.display !== 'none';
+    if (isViewerVisible) {
+        viewerContainer.style.display = 'none';
+        adminContainer.style.display = 'block';
+        modeToggleButton.textContent = '뷰어 모드로 전환';
+        buildAndRenderTree();
+    } else {
+        viewerContainer.style.display = 'block';
+        adminContainer.style.display = 'none';
+        modeToggleButton.textContent = '관리자 모드';
+        navigateTo(null, 'Home');
+    }
+}
+
+function setupTestPanelToggle() {
+    const header = document.getElementById('test-panel-header');
+    const content = document.getElementById('test-panel-content');
+    const icon = header.querySelector('.toggle-icon');
+    if (!header || !content || !icon) return;
+    header.addEventListener('click', () => {
+        const isCollapsed = content.classList.toggle('collapsed');
+        icon.textContent = isCollapsed ? '▼' : '▲';
+    });
+}
+
+searchButton.addEventListener('click', performSearch);
+searchInput.addEventListener('keyup', (event) => {
+    if (event.key === 'Enter') performSearch();
+});
 addNewButton.addEventListener('click', prepareNewDocumentForm);
 document.getElementById('btn-create-1').onclick = createSingleDummy;
-document.getElementById('btn-create-1000').onclick = createThematicDummies;
+document.getElementById('btn-create-100').onclick = createThematicDummies;
 document.getElementById('btn-delete-all').onclick = deleteAllDocuments;
-buildAndRenderTree();
-editorContent.innerHTML = '<p class="info-text">왼쪽 트리에서 항목을 선택하거나, 새 문서를 추가하세요.</p>';
+modeToggleButton.addEventListener('click', toggleMode);
+
+setupTestPanelToggle();
+navigateTo(null, 'Home');
