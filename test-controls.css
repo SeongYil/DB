@@ -1,0 +1,45 @@
+#test-controls {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    background-color: #34495e;
+    color: white;
+    padding: 15px 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    z-index: 2000;
+    width: 350px;
+    height: fit-content; /* <<--- 바로 이 한 줄을 추가! */
+}
+#test-controls h3 {
+    margin: 0 0 15px 0;
+    padding: 0;
+    border: none;
+    color: white;
+}
+.test-buttons {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+.test-buttons button {
+    flex-grow: 1;
+    padding: 8px;
+    border-radius: 5px;
+    border: none;
+    cursor: pointer;
+    font-weight: bold;
+}
+.test-buttons .delete-button {
+    background-color: #e74c3c;
+    color: white;
+}
+#test-log {
+    background-color: #2c3e50;
+    padding: 10px;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 13px;
+    height: 60px;
+    overflow-y: auto;
+}

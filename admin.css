@@ -1,0 +1,56 @@
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif; background-color: #f4f7f6; color: #333; padding: 20px; user-select: none; }
+h2, h3 { color: #2c3e50; padding-bottom: 10px; border-bottom: 1px solid #ecf0f1; margin-top: 0; }
+.admin-container { display: flex; gap: 0; margin-top: 20px; height: calc(100vh - 40px); border: 1px solid #ddd; border-radius: 8px; overflow: hidden; }
+#tree-container { width: 30%; min-width: 200px; background-color: #ffffff; padding: 20px; display: flex; flex-direction: column; box-sizing: border-box; }
+.tree-header { display: flex; justify-content: flex-start; align-items: center; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid #ecf0f1; }
+#add-new-button { background-color: #3498db; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 14px; transition: background-color 0.2s; }
+#add-new-button:hover { background-color: #2980b9; }
+#tree-root { flex-grow: 1; overflow-y: auto; }
+#resizer { flex-shrink: 0; width: 10px; background-color: #ecf0f1; cursor: col-resize; transition: background-color 0.2s; }
+#resizer:hover { background-color: #bdc3c7; }
+#editor-container { flex-grow: 1; background-color: #ffffff; padding: 20px; overflow-y: auto; box-sizing: border-box; }
+.form-group { margin-bottom: 20px; }
+.form-group label { display: block; font-weight: bold; margin-bottom: 8px; color: #555; }
+.form-group input, .form-group textarea, .form-group select { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 16px; box-sizing: border-box; }
+.tag-input-container { display: flex; flex-wrap: wrap; align-items: center; padding: 5px; border: 1px solid #ddd; border-radius: 4px; min-height: 40px; }
+.tag-item { display: flex; align-items: center; background-color: #3498db; color: white; padding: 5px 10px; margin: 5px; border-radius: 15px; font-size: 14px; }
+.remove-tag { margin-left: 8px; cursor: pointer; font-weight: bold; }
+#tag-input { flex-grow: 1; border: none; outline: none; padding: 5px; }
+#parent-display-wrapper { display: flex; align-items: center; gap: 10px; }
+#parent-display { flex-grow: 1; display: flex; flex-wrap: wrap; gap: 5px; padding: 10px; background-color: #ecf0f1; border-radius: 4px; min-height: 20px; }
+.parent-tag { background-color: #95a5a6; color: white; padding: 3px 8px; border-radius: 4px; font-size: 13px; }
+#change-parent-btn { padding: 8px 12px; border: 1px solid #bdc3c7; background-color: #fdfdfd; border-radius: 5px; cursor: pointer; }
+.button-group { display: flex; justify-content: flex-end; gap: 10px; }
+.button-group button { padding: 10px 20px; border: none; border-radius: 5px; font-size: 16px; font-weight: bold; cursor: pointer; transition: background-color 0.2s; }
+#save-button { background-color: #27ae60; color: white; }
+#save-button:hover { background-color: #229954; }
+#delete-button { background-color: #c0392b; color: white; }
+#delete-button:hover { background-color: #a93226; }
+.modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.6); display: none; justify-content: center; align-items: center; z-index: 1000; }
+.modal-content { background-color: white; padding: 20px 30px; border-radius: 10px; width: 60%; max-width: 600px; height: 80%; display: flex; flex-direction: column; }
+#modal-search-input { width: 100%; padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 5px; margin-bottom: 15px; box-sizing: border-box; }
+#modal-tree-container { flex-grow: 1; overflow-y: auto; border: 1px solid #eee; padding: 10px; }
+.modal-buttons { text-align: right; margin-top: 15px; }
+.modal-buttons button { padding: 8px 15px; margin-left: 10px; }
+#tree-root > ul { padding-left: 0; }
+#tree-root ul, #modal-tree-container ul { list-style-type: none; padding-left: 20px; position: relative; }
+#modal-tree-container ul { border-left: 1px solid #ddd; }
+#tree-root li, #modal-tree-container li { margin: 2px 0; position: relative; display: flex; flex-direction: column; }
+#modal-tree-container li::before { content: ''; position: absolute; top: 15px; left: -20px; border-bottom: 1px solid #ddd; width: 15px; height: 0; }
+.item-container { display: flex; align-items: center; }
+.toggle-btn { cursor: pointer; font-weight: bold; font-size: 16px; margin-right: 4px; display: inline-block; width: 20px; text-align: center; color: #7f8c8d; }
+.modal-checkbox { cursor: pointer; margin-right: 4px; width: 20px; accent-color: #3498db; }
+.tree-item-title { padding: 5px 8px; border-radius: 5px; cursor: pointer; transition: background-color 0.2s, opacity 0.2s; display: inline-block; }
+.tree-item-title:hover { background-color: #f0f0f0; }
+#tree-root .tree-item-title.active { background-color: #e0eaf1; font-weight: bold; }
+#modal-tree-container .tree-item-title { cursor: default; }
+li.collapsed > ul { display: none; }
+.tree-item-title.dragging { opacity: 0.4; }
+.tree-item-title.drop-target { background-color: #a2d9ce; border: 2px dashed #1abc9c; }
+.info-text { color: #95a5a6; }
+#test-controls { position: fixed; bottom: 10px; right: 10px; background-color: #34495e; color: white; padding: 15px 20px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); z-index: 2000; width: 350px; }
+#test-controls h3 { margin: 0 0 15px 0; padding: 0; border: none; color: white; }
+.test-buttons { display: flex; gap: 10px; margin-bottom: 15px; }
+.test-buttons button { flex-grow: 1; padding: 8px; border-radius: 5px; border: none; cursor: pointer; font-weight: bold; }
+.test-buttons .delete-button { background-color: #e74c3c; color: white; }
+#test-log { background-color: #2c3e50; padding: 10px; border-radius: 4px; font-family: monospace; font-size: 13px; height: 60px; overflow-y: auto; }

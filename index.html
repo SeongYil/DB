@@ -2,13 +2,34 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>내 웹서비스</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Firebase 계층형 탐색기</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <h1>안녕하세요!</h1>
-    <p>내 첫 웹서비스 페이지입니다.</p>
+
+    <div class="container">
+        <h1>문서 탐색 시스템</h1>
+        <div class="search-box">
+            <input type="text" id="searchInput" placeholder="검색할 키워드를 입력하세요...">
+            <button id="searchButton">검색</button>
+        </div>
+        
+        <hr>
+
+        <div id="breadcrumbContainer"></div>
+
+        <div id="mainContentContainer"></div>
+
+        <div id="resultsContainer">
+            <p class="info-text">데이터를 불러오는 중입니다...</p>
+        </div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
 
     <script src="script.js"></script>
+
 </body>
 </html>

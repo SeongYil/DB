@@ -1,0 +1,555 @@
+// -------------------------------------------------------------
+// Firebase 설정
+// -------------------------------------------------------------
+const firebaseConfig = {
+    apiKey: "AIzaSyCBimrNdCRm88oFQZtk2ZwTOjnhrFt9y8U",
+    authDomain: "honey-db.firebaseapp.com",
+    projectId: "honey-db",
+    storageBucket: "honey-db.appspot.com",
+    messagingSenderId: "199052115391",
+    appId: "1:199052115391:web:db3bf8bc864a026d2f750a"
+};
+const app = firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+// -------------------------------------------------------------
+// HTML 요소 가져오기
+// -------------------------------------------------------------
+const treeContainer = document.getElementById('tree-container');
+const editorContainer = document.getElementById('editor-container');
+const resizer = document.getElementById('resizer');
+const treeRoot = document.getElementById('tree-root');
+const editorContent = document.getElementById('editor-content');
+const addNewButton = document.getElementById('add-new-button');
+
+// -------------------------------------------------------------
+// 상태 관리 변수
+// -------------------------------------------------------------
+let currentSelectedDocId = null;
+let currentSelectedItemElement = null;
+let allDocsMap = new Map();
+
+// -------------------------------------------------------------
+// LocalStorage 관련 도우미 함수
+// -------------------------------------------------------------
+const EXPANDED_STATE_KEY = 'treeExpandedState';
+
+function getExpandedState() {
+    const state = localStorage.getItem(EXPANDED_STATE_KEY);
+    return state ? JSON.parse(state) : [];
+}
+
+function saveExpandedState(expandedIds) {
+    localStorage.setItem(EXPANDED_STATE_KEY, JSON.stringify(expandedIds));
+}
+
+// -------------------------------------------------------------
+// 테스트 데이터 소스
+// -------------------------------------------------------------
+const dummyThemes = {
+    "지상동물": ["사자", "호랑이", "코끼리", "기린", "토끼", "하마", "얼룩말", "원숭이", "캥거루", "판다"],
+    "해산물": ["고등어", "오징어", "새우", "꽃게", "광어", "연어", "참치", "문어", "전복", "가리비"],
+    "식물": ["장미", "소나무", "민들레", "해바라기", "튤립", "선인장", "대나무", "은행나무", "단풍나무", "국화"],
+    "과일": ["사과", "바나나", "딸기", "포도", "오렌지", "수박", "파인애플", "체리", "복숭아", "망고"]
+};
+
+
+// -------------------------------------------------------------
+// 핵심 기능 함수
+// -------------------------------------------------------------
+
+function prepareNewDocumentForm() {
+    currentSelectedDocId = null; 
+    const currentActive = document.querySelector('#tree-root .tree-item-title.active');
+    if (currentActive) {
+        currentActive.classList.remove('active');
+    }
+    loadDocumentIntoEditor(null, { title: '', contents: '', keywords: [], parentIds: [] });
+    document.getElementById('editor-title-input').focus();
+}
+
+async function saveChanges() {
+    const newTitle = document.getElementById('editor-title-input').value;
+    const newContents = document.getElementById('editor-contents-textarea').value;
+    const parentSpans = document.querySelectorAll('#parent-display .parent-tag');
+    const newParentIds = Array.from(parentSpans).map(span => span.dataset.parentId);
+    
+    const newKeywords = [];
+    document.querySelectorAll('.tag-item').forEach(tag => {
+        newKeywords.push(tag.firstChild.textContent.trim());
+    });
+
+    if (!newTitle) {
+        alert("제목은 필수 항목입니다.");
+        return;
+    }
+
+    const saveButton = document.getElementById('save-button');
+    saveButton.textContent = '저장 중...';
+    saveButton.disabled = true;
+
+    try {
+        const docData = {
+            title: newTitle,
+            contents: newContents,
+            keywords: newKeywords,
+            parentIds: newParentIds
+        };
+
+        if (currentSelectedDocId) {
+            await db.collection("helps").doc(currentSelectedDocId).update(docData);
+        } else {
+            const docRef = await db.collection("helps").add(docData);
+            currentSelectedDocId = docRef.id;
+        }
+        await buildAndRenderTree();
+    } catch (error) {
+        console.error("저장 중 오류 발생:", error);
+        alert("저장에 실패했습니다. 콘솔을 확인해주세요.");
+    } finally {
+        if(document.getElementById('save-button')) {
+            document.getElementById('save-button').textContent = '저장하기';
+            document.getElementById('save-button').disabled = false;
+        }
+    }
+}
+
+async function deleteDocument() {
+    if (!currentSelectedDocId) {
+        alert("삭제할 항목을 먼저 선택해주세요.");
+        return;
+    }
+    if (!confirm("정말 이 문서를 삭제하시겠습니까?")) { return; }
+    try {
+        await db.collection("helps").doc(currentSelectedDocId).delete();
+        editorContent.innerHTML = '<p class="info-text">왼쪽 트리에서 항목을 선택하거나, 새 문서를 추가하세요.</p>';
+        currentSelectedDocId = null;
+        await buildAndRenderTree();
+    } catch (error) {
+        console.error("삭제 중 오류 발생:", error);
+        alert("삭제에 실패했습니다. 콘솔을 확인해주세요.");
+    }
+}
+
+function loadDocumentIntoEditor(docId, docData) {
+    currentSelectedDocId = docId;
+    const parentIds = docData.parentIds || [];
+
+    editorContent.innerHTML = `
+        <h3>${docData.title || '새 문서 작성'}</h3>
+        <div class="form-group">
+            <label>제목</label>
+            <input type="text" id="editor-title-input" value="${docData.title || ''}">
+        </div>
+        <div class="form-group">
+            <label>내용</label>
+            <textarea id="editor-contents-textarea" rows="15">${docData.contents || ''}</textarea>
+        </div>
+        <div class="form-group">
+            <label>검색 키워드</label>
+            <div id="tag-container" class="tag-input-container">
+                <input type="text" id="tag-input" placeholder="키워드 입력 후 Enter">
+            </div>
+        </div>
+        <div class="form-group">
+            <label>부모 문서</label>
+            <div id="parent-display-wrapper">
+                <div id="parent-display"></div>
+                <button id="change-parent-btn">변경</button>
+            </div>
+        </div>
+        <div class="button-group">
+            <button id="save-button">저장하기</button>
+            <button id="delete-button">삭제하기</button>
+        </div>
+    `;
+
+    const parentDisplay = document.getElementById('parent-display');
+    parentDisplay.innerHTML = '';
+    if (parentIds.length > 0) {
+        parentIds.forEach(pId => {
+            const parentNode = allDocsMap.get(pId);
+            if (parentNode) {
+                const parentTag = document.createElement('span');
+                parentTag.className = 'parent-tag';
+                parentTag.textContent = parentNode.data.title;
+                parentTag.dataset.parentId = pId;
+                parentDisplay.appendChild(parentTag);
+            }
+        });
+    } else {
+        parentDisplay.textContent = '없음';
+    }
+
+    document.getElementById('save-button').onclick = saveChanges;
+    document.getElementById('delete-button').onclick = deleteDocument;
+    document.getElementById('change-parent-btn').onclick = () => setupParentSelectorModal(parentIds);
+    setupTagInput(docData.keywords || []);
+}
+
+function setupTagInput(keywords) {
+    const container = document.getElementById('tag-container');
+    const input = document.getElementById('tag-input');
+    keywords.forEach(keyword => {
+        container.insertBefore(createTag(keyword), input);
+    });
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ',') {
+            e.preventDefault();
+            const tagText = input.value.trim();
+            if (tagText) {
+                container.insertBefore(createTag(tagText), input);
+                input.value = '';
+            }
+        }
+    });
+    container.addEventListener('click', (e) => {
+        if (e.target.classList.contains('remove-tag')) {
+            e.target.parentElement.remove();
+        }
+    });
+}
+
+function createTag(text) {
+    const tag = document.createElement('div');
+    tag.className = 'tag-item';
+    tag.innerHTML = `<span>${text}</span> <span class="remove-tag" title="삭제">x</span>`;
+    return tag;
+}
+
+function setupParentSelectorModal(currentParentIds) {
+    const modalOverlay = document.createElement('div');
+    modalOverlay.className = 'modal-overlay';
+    modalOverlay.innerHTML = `
+        <div class="modal-content">
+            <h3>부모 문서 선택</h3>
+            <input type="text" id="modal-search-input" placeholder="검색으로 필터링...">
+            <div id="modal-tree-container"></div>
+            <div class="modal-buttons">
+                <button id="modal-cancel">취소</button>
+                <button id="modal-select">선택 완료</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modalOverlay);
+    modalOverlay.style.display = 'flex';
+
+    const modalTreeContainer = document.getElementById('modal-tree-container');
+    const searchInput = document.getElementById('modal-search-input');
+    
+    const renderModalTree = (filterText = '') => {
+        modalTreeContainer.innerHTML = '';
+        const rootUl = document.createElement('ul');
+        modalTreeContainer.appendChild(rootUl);
+        const tree = buildTreeFromMap();
+        const filteredTree = filterText ? filterTree(tree, filterText.toLowerCase()) : tree;
+        renderTree(filteredTree, rootUl, true, currentParentIds);
+    };
+
+    renderModalTree();
+    searchInput.addEventListener('keyup', () => renderModalTree(searchInput.value));
+
+    document.getElementById('modal-select').onclick = () => {
+        const selectedIds = [];
+        const selectedTitles = [];
+        modalTreeContainer.querySelectorAll('input[type="checkbox"]:checked').forEach(cb => {
+            selectedIds.push(cb.dataset.id);
+            selectedTitles.push(cb.dataset.title);
+        });
+        const parentDisplay = document.getElementById('parent-display');
+        parentDisplay.innerHTML = '';
+        if (selectedIds.length > 0) {
+             selectedIds.forEach((id, index) => {
+                const parentTag = document.createElement('span');
+                parentTag.className = 'parent-tag';
+                parentTag.textContent = selectedTitles[index];
+                parentTag.dataset.parentId = id;
+                parentDisplay.appendChild(parentTag);
+            });
+        } else {
+            parentDisplay.textContent = '없음';
+        }
+        closeModal();
+    };
+    
+    const closeModal = () => document.body.removeChild(modalOverlay);
+    document.getElementById('modal-cancel').onclick = closeModal;
+    modalOverlay.onclick = (e) => { if (e.target === modalOverlay) closeModal(); };
+}
+
+function renderTree(nodes, container, isModal = false, checkedIds = []) {
+    nodes.forEach(node => {
+        const listItem = document.createElement('li');
+        const hasChildren = node.children && node.children.length > 0;
+        const itemContainer = document.createElement('div');
+        itemContainer.className = 'item-container';
+
+        if (hasChildren) {
+            const expandedIds = isModal ? [] : getExpandedState();
+            const isCollapsed = !expandedIds.includes(node.id);
+
+            if (!isModal && isCollapsed) listItem.classList.add('collapsed');
+            else if (isModal) listItem.classList.add('collapsed');
+
+            const toggleBtn = document.createElement('span');
+            toggleBtn.className = 'toggle-btn';
+            toggleBtn.textContent = listItem.classList.contains('collapsed') ? '+' : '-';
+            
+            toggleBtn.onclick = (e) => {
+                e.stopPropagation();
+                const nowIsCollapsed = listItem.classList.toggle('collapsed');
+                toggleBtn.textContent = nowIsCollapsed ? '+' : '-';
+                if (!isModal) {
+                    let currentState = getExpandedState();
+                    if (nowIsCollapsed) {
+                        currentState = currentState.filter(id => id !== node.id);
+                    } else {
+                        if (!currentState.includes(node.id)) currentState.push(node.id);
+                    }
+                    saveExpandedState(currentState);
+                }
+            };
+            itemContainer.appendChild(toggleBtn);
+        } else {
+            const emptySpan = document.createElement('span');
+            emptySpan.style.display = 'inline-block';
+            emptySpan.style.width = '20px';
+            itemContainer.appendChild(emptySpan);
+        }
+
+        if (isModal) {
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.className = 'modal-checkbox';
+            checkbox.dataset.id = node.id;
+            checkbox.dataset.title = node.data.title;
+            if (checkedIds.includes(node.id)) checkbox.checked = true;
+            if (node.id === currentSelectedDocId) checkbox.disabled = true;
+            itemContainer.appendChild(checkbox);
+        }
+
+        const titleSpan = document.createElement('span');
+        titleSpan.className = 'tree-item-title';
+        titleSpan.textContent = node.data.title;
+        titleSpan.dataset.id = node.id;
+
+        if (!isModal) {
+            titleSpan.draggable = true;
+            titleSpan.addEventListener('dragstart', (e) => { e.stopPropagation(); e.dataTransfer.setData('text/plain', node.id); e.dataTransfer.effectAllowed = 'move'; setTimeout(() => e.target.classList.add('dragging'), 0); });
+            titleSpan.addEventListener('dragend', (e) => e.target.classList.remove('dragging'));
+            titleSpan.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; e.target.classList.add('drop-target'); });
+            titleSpan.addEventListener('dragleave', (e) => e.target.classList.remove('drop-target'));
+            titleSpan.addEventListener('drop', handleDrop);
+            titleSpan.onclick = () => {
+                const currentActive = document.querySelector('#tree-root .tree-item-title.active');
+                if (currentActive) currentActive.classList.remove('active');
+                titleSpan.classList.add('active');
+                currentSelectedItemElement = titleSpan;
+                loadDocumentIntoEditor(node.id, node.data);
+            };
+        }
+        
+        itemContainer.appendChild(titleSpan);
+        listItem.appendChild(itemContainer);
+
+        if (hasChildren) {
+            const childrenContainer = document.createElement('ul');
+            listItem.appendChild(childrenContainer);
+            renderTree(node.children, childrenContainer, isModal, checkedIds);
+        }
+        container.appendChild(listItem);
+    });
+}
+
+function filterTree(nodes, filterText) {
+    const filteredNodes = [];
+    for (const node of nodes) {
+        let matches = node.data.title.toLowerCase().includes(filterText);
+        let children = [];
+        if (node.children && node.children.length > 0) {
+            children = filterTree(node.children, filterText);
+        }
+        if (matches || children.length > 0) {
+            const newNode = { ...node, children: children };
+            filteredNodes.push(newNode);
+        }
+    }
+    return filteredNodes;
+}
+
+async function handleDrop(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    e.target.classList.remove('drop-target');
+    const draggedDocId = e.dataTransfer.getData('text/plain');
+    const newParentId = e.target.dataset.id;
+    if (draggedDocId === newParentId) return;
+
+    let tempId = newParentId;
+    while(tempId) {
+        if (tempId === draggedDocId) {
+            alert("자신의 하위 항목으로 문서를 이동할 수 없습니다.");
+            return;
+        }
+        const parentNode = allDocsMap.get(tempId);
+        if (!parentNode) break;
+        tempId = parentNode.data.parentIds && parentNode.data.parentIds.length > 0 ? parentNode.data.parentIds[0] : null;
+    }
+    try {
+        // 드래그 앤 드롭은 부모를 하나만 지정하는 것으로 가정 (여러 부모 중 하나로 이동)
+        await db.collection("helps").doc(draggedDocId).update({ parentIds: [newParentId] });
+        buildAndRenderTree();
+    } catch (error) {
+        console.error("부모 변경 중 오류:", error);
+        alert("부모를 변경하는 데 실패했습니다.");
+    }
+}
+
+function buildTreeFromMap() {
+    allDocsMap.forEach(node => node.children = []);
+    const tree = [];
+    allDocsMap.forEach(node => {
+        const parentIds = node.data.parentIds || [];
+        if (parentIds.length === 0) {
+            tree.push(node);
+        } else {
+            parentIds.forEach(parentId => {
+                if (allDocsMap.has(parentId)) {
+                    allDocsMap.get(parentId).children.push(node);
+                }
+            });
+        }
+    });
+    return tree;
+}
+
+async function buildAndRenderTree() {
+    treeRoot.innerHTML = '<p class="info-text">데이터 로딩 중...</p>';
+    try {
+        const snapshot = await db.collection("helps").get();
+        if (snapshot.empty) {
+            treeRoot.innerHTML = '<p class="info-text">데이터가 없습니다.</p>';
+            return;
+        }
+        allDocsMap.clear();
+        snapshot.forEach(doc => {
+            allDocsMap.set(doc.id, { id: doc.id, data: doc.data(), children: [] });
+        });
+        const tree = buildTreeFromMap();
+        treeRoot.innerHTML = '';
+        const rootUl = document.createElement('ul');
+        treeRoot.appendChild(rootUl);
+        renderTree(tree, rootUl);
+    } catch (error) {
+        console.error("트리 생성 중 오류:", error);
+        treeRoot.innerHTML = '<p class="info-text">데이터를 불러오는 데 실패했습니다.</p>';
+    }
+}
+
+let isResizing = false;
+resizer.addEventListener('mousedown', (e) => {
+    isResizing = true;
+    e.preventDefault();
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+});
+function handleMouseMove(e) {
+    if (!isResizing) return;
+    const containerRect = treeContainer.parentElement.getBoundingClientRect();
+    let newLeftWidth = e.clientX - containerRect.left;
+    if (newLeftWidth < 200) newLeftWidth = 200;
+    if (newLeftWidth > containerRect.width - 200) newLeftWidth = containerRect.width - 200;
+    treeContainer.style.width = `${newLeftWidth}px`;
+}
+function handleMouseUp() {
+    isResizing = false;
+    document.removeEventListener('mousemove', handleMouseMove);
+    document.removeEventListener('mouseup', handleMouseUp);
+}
+
+const log = (message) => {
+    const logContainer = document.getElementById('test-log');
+    if (logContainer) logContainer.innerHTML = `> ${message}<br>` + logContainer.innerHTML;
+};
+async function createSingleDummy() {
+    if (!confirm("랜덤 테마의 더미 문서 1개를 생성하시겠습니까?")) return;
+    log("더미 문서 1개 생성 시작...");
+    try {
+        const categories = Object.keys(dummyThemes);
+        const randomCategory = categories[Math.floor(Math.random() * categories.length)];
+        const items = dummyThemes[randomCategory];
+        const randomItem = items[Math.floor(Math.random() * items.length)];
+        await db.collection("helps").add({ title: randomItem, contents: `이것은 ${randomCategory} 카테고리의 ${randomItem} 문서입니다.`, keywords: ["더미", "테스트", randomItem, randomCategory], parentIds: [] });
+        log("✅ 더미 문서 1개 생성 완료!");
+        buildAndRenderTree();
+    } catch (e) {
+        log("❌ 생성 실패: " + e.message); console.error(e);
+    }
+}
+async function createThematicDummies() {
+    const docCount = 100;
+    if (!confirm(`정말로 테마 더미 문서 ${docCount}개를 생성하시겠습니까?`)) return;
+    log(`테마 더미 ${docCount}개 생성 시작...`);
+    try {
+        const batch = db.batch();
+        const categories = Object.keys(dummyThemes);
+        let parentId = null;
+        for (let i = 0; i < docCount; i++) {
+            const docRef = db.collection("helps").doc();
+            if (i % 10 === 0) {
+                const categoryName = categories[ (i/10) % categories.length ];
+                parentId = docRef.id;
+                batch.set(docRef, { title: categoryName, contents: `${categoryName}에 대한 모든 문서들을 포함합니다.`, keywords: ["부모", "카테고리", categoryName], parentIds: [] });
+            } else {
+                const parentNode = allDocsMap.get(parentId);
+                const categoryName = parentNode ? parentNode.data.title : categories[0];
+                const items = dummyThemes[categoryName] || [];
+                const itemName = items[i % items.length] || `항목 ${i}`;
+                batch.set(docRef, { title: itemName, contents: `이것은 ${itemName}에 대한 내용입니다.`, keywords: ["자식", "테스트", itemName, categoryName], parentIds: parentId ? [parentId] : [] });
+            }
+        }
+        await batch.commit();
+        log(`✅ 테마 더미 ${docCount}개 생성 완료!`);
+        buildAndRenderTree();
+    } catch (e) {
+        log("❌ 생성 실패: " + e.message);
+        console.error(e);
+    }
+}
+async function deleteAllDocuments() {
+    if (!confirm("⚠️ 경고! 'helps' 컬렉션의 모든 문서를 영구적으로 삭제합니다. 정말로 진행하시겠습니까? 이 작업은 되돌릴 수 없습니다!")) return;
+    log("전체 문서 삭제 시작...");
+    try {
+        const snapshot = await db.collection("helps").get();
+        if (snapshot.empty) { log("삭제할 문서가 없습니다."); return; }
+        const totalDocs = snapshot.size;
+        log(`총 ${totalDocs}개의 문서를 삭제합니다...`);
+        const batches = [];
+        let currentBatch = db.batch();
+        let currentBatchSize = 0;
+        snapshot.forEach(doc => {
+            currentBatch.delete(doc.ref);
+            currentBatchSize++;
+            if (currentBatchSize === 500) {
+                batches.push(currentBatch);
+                currentBatch = db.batch();
+                currentBatchSize = 0;
+            }
+        });
+        if (currentBatchSize > 0) batches.push(currentBatch);
+        for (const batch of batches) {
+            await batch.commit();
+        }
+        log("✅ 전체 문서 삭제 완료!");
+        buildAndRenderTree();
+    } catch (e) {
+        log("❌ 삭제 실패: " + e.message); console.error(e);
+    }
+}
+
+addNewButton.addEventListener('click', prepareNewDocumentForm);
+document.getElementById('btn-create-1').onclick = createSingleDummy;
+document.getElementById('btn-create-1000').onclick = createThematicDummies;
+document.getElementById('btn-delete-all').onclick = deleteAllDocuments;
+buildAndRenderTree();
+editorContent.innerHTML = '<p class="info-text">왼쪽 트리에서 항목을 선택하거나, 새 문서를 추가하세요.</p>';
