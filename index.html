@@ -42,8 +42,7 @@
                     <button id="add-new-button">새 문서 추가</button>
                     <button id="edit-global-notice-button">공지/안내문 수정</button>
                 </div>
-                <div id="tree-root">
-                    </div>
+                <div id="tree-root"></div>
             </div>
             <div id="resizer"></div>
             <div id="editor-container">
@@ -60,3 +59,1196 @@
     <script src="main.js"></script>
 </body>
 </html>
+
+<!-- ============================================================= -->
+<!--                                                             -->
+<!--  통합 문서 시스템 (main.js)                                     -->
+<!--                                                             -->
+<!-- ============================================================= -->
+<script>
+// -------------------------------------------------------------
+// Firebase 설정
+// -------------------------------------------------------------
+const firebaseConfig = {
+    apiKey: "YOUR_API_KEY", // 보안을 위해 실제 키는 여기에 직접 입력하지 마세요.
+    authDomain: "honey-db.firebaseapp.com",
+    projectId: "honey-db",
+    storageBucket: "honey-db.appspot.com",
+    messagingSenderId: "199052115391",
+    appId: "1:199052115391:web:db3bf8bc864a026d2f750a"
+};
+const app = firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+// -------------------------------------------------------------
+// HTML 요소 가져오기
+// -------------------------------------------------------------
+const modeToggleButton = document.getElementById('mode-toggle-btn');
+const viewerContainer = document.getElementById('viewer-container');
+const adminContainer = document.getElementById('admin-container');
+const appTitle = document.getElementById('app-title');
+
+// 뷰어 모드 요소
+const searchInput = document.getElementById('searchInput');
+const searchButton = document.getElementById('searchButton');
+const viewerMainContent = document.getElementById('mainContentContainer');
+const viewerResults = document.getElementById('resultsContainer');
+const breadcrumbContainer = document.getElementById('breadcrumbContainer');
+const leftMarginContainer = document.getElementById('leftMargin');
+
+// 관리자 모드 요소
+const treeContainer = document.getElementById('tree-container');
+const editorContainer = document.getElementById('editor-container');
+const resizer = document.getElementById('resizer');
+const treeRoot = document.getElementById('tree-root');
+const editorContent = document.getElementById('editor-content');
+const addNewButton = document.getElementById('add-new-button');
+const editGlobalNoticeButton = document.getElementById('edit-global-notice-button');
+
+// -------------------------------------------------------------
+// 상태 관리 변수
+// -------------------------------------------------------------
+let breadcrumbTrail = [];
+let currentSelectedDocId = null;
+let allDocsMap = new Map();
+const EXPANDED_STATE_KEY = 'treeExpandedState';
+
+// =============================================================
+//  뷰어 모드 (Viewer Mode) 함수들
+// =============================================================
+
+function renderBreadcrumbs() {
+    breadcrumbContainer.innerHTML = '';
+    if (!breadcrumbTrail || breadcrumbTrail.length === 0) return;
+
+    breadcrumbTrail.forEach(path => {
+        const pathContainer = document.createElement('div');
+        pathContainer.className = 'breadcrumb-path';
+        path.forEach((item, index) => {
+            let element;
+            if (index === path.length - 1) {
+                element = document.createElement('span');
+                element.className = 'breadcrumb-current';
+                element.textContent = item.title;
+            } else {
+                element = document.createElement('a');
+                element.className = 'breadcrumb-item';
+                element.textContent = item.title;
+                element.onclick = (e) => {
+                    e.preventDefault();
+                    navigateTo(item.id, item.title);
+                };
+            }
+            pathContainer.appendChild(element);
+            if (index < path.length - 1) {
+                const separator = document.createElement('span');
+                separator.className = 'breadcrumb-separator';
+                separator.textContent = '>';
+                pathContainer.appendChild(separator);
+            }
+        });
+        breadcrumbContainer.appendChild(pathContainer);
+    });
+}
+
+async function buildAllBreadcrumbPaths(startDocId) {
+    if (allDocsMap.size === 0) {
+        const snapshot = await db.collection("helps").get();
+        snapshot.forEach(doc => {
+            allDocsMap.set(doc.id, { id: doc.id, data: doc.data(), children: [] });
+        });
+    }
+    if (!startDocId || !allDocsMap.has(startDocId)) {
+        return [];
+    }
+    const docNode = allDocsMap.get(startDocId);
+    const currentDocInfo = { id: startDocId, title: docNode.data.title };
+    const parentIds = docNode.data.parentIds || [];
+    if (parentIds.length === 0) {
+        return [[{ id: null, title: 'Home' }, currentDocInfo]];
+    }
+    let allPaths = [];
+    for (const parentId of parentIds) {
+        const parentPaths = await buildAllBreadcrumbPaths(parentId);
+        for (const path of parentPaths) {
+            allPaths.push([...path, currentDocInfo]);
+        }
+    }
+    return allPaths;
+}
+
+async function navigateTo(docId, docTitle) {
+    if (docId) {
+        breadcrumbTrail = await buildAllBreadcrumbPaths(docId);
+    } else {
+        breadcrumbTrail = [[{ id: null, title: 'Home' }]];
+    }
+    renderBreadcrumbs();
+
+    viewerMainContent.innerHTML = '';
+    viewerResults.innerHTML = '<p class="info-text">목록을 불러오는 중...</p>';
+
+    if (docId) {
+        try {
+            const docSnap = await db.collection("helps").doc(docId).get();
+            if (docSnap.exists) {
+                const data = docSnap.data();
+                let keywordsHtml = '';
+                if (data.keywords && data.keywords.length > 0) {
+                    keywordsHtml = `<div class="keyword-tag-container"><h4>관련 키워드</h4>${data.keywords.map(kw => `<span class="keyword-tag">${kw}</span>`).join('')}</div>`;
+                }
+                viewerMainContent.innerHTML = `<h2>${data.title}</h2><div>${data.contents || '내용이 없습니다.'}</div>${keywordsHtml}`;
+            } else {
+                viewerMainContent.innerHTML = '<h4>문서가 존재하지 않습니다.</h4>';
+            }
+        } catch (error) {
+            console.error("메인 컨텐츠 로딩 오류:", error);
+            viewerMainContent.innerHTML = '<h4>컨텐츠를 불러오는 데 실패했습니다.</h4>';
+        }
+    } else {
+        viewerMainContent.innerHTML = '<h2>Home</h2><p>최상위 문서 목록입니다.</p>';
+    }
+
+    try {
+        let query = docId === null
+            ? db.collection("helps").where("parentIds", "==", [])
+            : db.collection("helps").where("parentIds", "array-contains", docId);
+
+        const snapshot = await query.get();
+        viewerResults.innerHTML = '';
+        if (snapshot.empty) {
+            viewerResults.innerHTML = '<p class="info-text">하위 항목이 없습니다.</p>';
+        } else {
+            snapshot.forEach(childDoc => {
+                const childData = childDoc.data();
+                const resultItem = document.createElement('div');
+                resultItem.className = 'result-item';
+                resultItem.innerHTML = `<h3>${childData.title}</h3>`;
+                resultItem.onclick = () => navigateTo(childDoc.id, childData.title);
+                viewerResults.appendChild(resultItem);
+            });
+        }
+    } catch (error) {
+        console.error("하위 목록 탐색 중 오류:", error);
+        viewerResults.innerHTML = '<p class="info-text">하위 목록을 불러오는 데 실패했습니다.</p>';
+    }
+}
+
+async function performSearch() {
+    const searchTerm = searchInput.value.trim();
+    if (!searchTerm) return;
+
+    viewerMainContent.innerHTML = `<h2>'${searchTerm}' 검색 결과</h2>`;
+    breadcrumbContainer.innerHTML = '';
+    viewerResults.innerHTML = '<p class="info-text">검색 중입니다...</p>';
+
+    try {
+        const snapshot = await db.collection("helps").where("keywords", "array-contains", searchTerm).get();
+        viewerResults.innerHTML = ''; 
+
+        if (snapshot.empty) {
+            viewerResults.innerHTML = '<p class="info-text">검색 결과가 없습니다.</p>';
+            return;
+        }
+
+        const parentDocs = [];
+        const childDocs = [];
+
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            if (!data.parentIds || data.parentIds.length === 0) {
+                parentDocs.push({ id: doc.id, data: data });
+            } else {
+                childDocs.push({ id: doc.id, data: data });
+            }
+        });
+
+        const regex = new RegExp(searchTerm, 'gi');
+
+        const renderResultItem = (doc) => {
+            const data = doc.data;
+            const resultItem = document.createElement('div');
+            resultItem.className = 'result-item';
+            
+            const highlightedTitle = data.title.replace(regex, `<mark class="highlight">$&</mark>`);
+            const highlightedContents = (data.contents || '').replace(regex, `<mark class="highlight">$&</mark>`);
+            
+            resultItem.innerHTML = `<h3>${highlightedTitle}</h3><div>${highlightedContents}</div><p style="margin-top: 10px; font-size: 12px; color: #7f8c8d;">매칭 키워드: ${searchTerm}</p>`;
+            resultItem.onclick = () => navigateTo(doc.id, data.title);
+            return resultItem;
+        };
+
+        if (parentDocs.length > 0) {
+            const parentHeader = document.createElement('h3');
+            parentHeader.textContent = "상위 문서";
+            parentHeader.className = 'search-category-header';
+            viewerResults.appendChild(parentHeader);
+            parentDocs.forEach(doc => viewerResults.appendChild(renderResultItem(doc)));
+        }
+
+        if (parentDocs.length > 0 && childDocs.length > 0) {
+            const separator = document.createElement('hr');
+            separator.className = 'search-result-separator';
+            viewerResults.appendChild(separator);
+        }
+
+        if (childDocs.length > 0) {
+            const childHeader = document.createElement('h3');
+            childHeader.textContent = "하위 문서";
+            childHeader.className = 'search-category-header';
+            viewerResults.appendChild(childHeader);
+            childDocs.forEach(doc => viewerResults.appendChild(renderResultItem(doc)));
+        }
+
+    } catch (error) {
+        console.error("검색 중 오류 발생:", error);
+        viewerResults.innerHTML = '<p class="info-text">검색에 실패했습니다.</p>';
+    }
+}
+
+
+// =============================================================
+//  관리자 모드 (Admin Mode) 함수들
+// =============================================================
+
+function getExpandedState() { return localStorage.getItem(EXPANDED_STATE_KEY) ? JSON.parse(localStorage.getItem(EXPANDED_STATE_KEY)) : []; }
+function saveExpandedState(expandedIds) { localStorage.setItem(EXPANDED_STATE_KEY, JSON.stringify(expandedIds)); }
+
+function prepareNewDocumentForm() {
+    currentSelectedDocId = null;
+    const currentActive = document.querySelector('#tree-root .tree-item-title.active');
+    if (currentActive) {
+        currentActive.classList.remove('active');
+    }
+    loadDocumentIntoEditor(null, { title: '', contents: '', keywords: [], parentIds: [] });
+    if(document.getElementById('editor-title-input')) {
+        document.getElementById('editor-title-input').focus();
+    }
+}
+
+async function saveChanges() {
+    const newTitle = document.getElementById('editor-title-input').value;
+    const newContents = document.getElementById('editor-contents-textarea').value;
+    const parentSpans = document.querySelectorAll('#parent-display .parent-tag');
+    const newParentIds = Array.from(parentSpans).map(span => span.dataset.parentId);
+    const newKeywords = [];
+    document.querySelectorAll('.tag-item').forEach(tag => {
+        newKeywords.push(tag.firstChild.textContent.trim());
+    });
+    if (!newTitle) {
+        alert("제목은 필수 항목입니다.");
+        return;
+    }
+    const saveButton = document.getElementById('save-button');
+    saveButton.textContent = '저장 중...';
+    saveButton.disabled = true;
+    try {
+        const docData = {
+            title: newTitle,
+            contents: newContents,
+            keywords: newKeywords,
+            parentIds: newParentIds,
+        };
+        if (currentSelectedDocId) {
+            await db.collection("helps").doc(currentSelectedDocId).update(docData);
+        } else {
+            const docRef = await db.collection("helps").add(docData);
+            currentSelectedDocId = docRef.id;
+        }
+        await buildAndRenderTree();
+    } catch (error) {
+        console.error("저장 중 오류 발생:", error);
+        alert("저장에 실패했습니다.");
+    } finally {
+        if (document.getElementById('save-button')) {
+            document.getElementById('save-button').textContent = '저장하기';
+            document.getElementById('save-button').disabled = false;
+        }
+    }
+}
+
+async function deleteDocument() {
+    if (!currentSelectedDocId) {
+        alert("삭제할 항목을 먼저 선택해주세요.");
+        return;
+    }
+    if (!confirm("정말 이 문서를 삭제하시겠습니까?")) { return; }
+    try {
+        await db.collection("helps").doc(currentSelectedDocId).delete();
+        editorContent.innerHTML = '<p class="info-text">왼쪽 트리에서 항목을 선택하거나, 새 문서를 추가하세요.</p>';
+        currentSelectedDocId = null;
+        await buildAndRenderTree();
+    } catch (error) {
+        console.error("삭제 중 오류 발생:", error);
+        alert("삭제에 실패했습니다.");
+    }
+}
+
+function loadDocumentIntoEditor(docId, docData) {
+    currentSelectedDocId = docId;
+    const parentIds = docData.parentIds || [];
+
+    editorContent.innerHTML = `
+        <h3>${docData.title || '새 문서 작성'}</h3>
+        <div class="form-group">
+            <label>제목</label>
+            <input type="text" id="editor-title-input" value="${docData.title || ''}">
+        </div>
+        <div class="form-group">
+            <label for="editor-contents-textarea">
+                <span>내용</span>
+                <span class="label-buttons">
+                    <button id="add-hyperlink-btn" class="inline-btn">하이퍼링크 추가</button>
+                    <button id="add-filepath-btn" class="inline-btn">폴더/파일 경로 추가</button>
+                </span>
+            </label>
+            <textarea id="editor-contents-textarea" placeholder="여기에 내용을 입력하세요... HTML 태그 사용이 가능합니다."></textarea>
+        </div>
+        <div class="form-group">
+            <label>검색 키워드</label>
+            <div id="tag-container" class="tag-input-container">
+                <input type="text" id="tag-input" placeholder="키워드 입력 후 Enter">
+            </div>
+        </div>
+        <div class="form-group">
+            <label>부모 문서</label>
+            <div id="parent-display-wrapper">
+                <div id="parent-display"></div>
+                <button id="change-parent-btn">변경</button>
+            </div>
+        </div>
+        <div class="button-group">
+            <button id="save-button">저장하기</button>
+            <button id="delete-button">삭제하기</button>
+        </div>`;
+
+    const parentDisplay = document.getElementById('parent-display');
+    parentDisplay.innerHTML = '';
+    if (parentIds.length > 0) {
+        parentIds.forEach(pId => {
+            const parentNode = allDocsMap.get(pId);
+            if (parentNode) {
+                const parentTag = document.createElement('div');
+                parentTag.className = 'parent-tag';
+                parentTag.dataset.parentId = pId;
+                parentTag.innerHTML = `<span>${parentNode.data.title}</span><span class="remove-parent-tag" title="삭제">x</span>`;
+                parentDisplay.appendChild(parentTag);
+            }
+        });
+    } else {
+        parentDisplay.textContent = '없음';
+    }
+
+    parentDisplay.addEventListener('click', (e) => {
+        if (e.target.classList.contains('remove-parent-tag')) {
+            e.target.parentElement.remove();
+            if (parentDisplay.children.length === 0) {
+                parentDisplay.textContent = '없음';
+            }
+        }
+    });
+
+    const mainTextarea = document.getElementById('editor-contents-textarea');
+    mainTextarea.value = docData.contents || '';
+
+    function autoResize() {
+        this.style.height = 'auto';
+        this.style.height = (this.scrollHeight) + 'px';
+    }
+
+    mainTextarea.addEventListener('input', autoResize, false);
+    setTimeout(() => { if (mainTextarea) autoResize.call(mainTextarea); }, 0);
+
+    document.getElementById('save-button').onclick = saveChanges;
+    document.getElementById('delete-button').onclick = deleteDocument;
+    document.getElementById('change-parent-btn').onclick = () => setupParentSelectorModal(parentIds);
+    document.getElementById('add-hyperlink-btn').onclick = openHyperlinkModal;
+    document.getElementById('add-filepath-btn').onclick = openFilePathModal; // 새 버튼 이벤트 리스너
+    setupTagInput(docData.keywords || []);
+}
+
+
+// ▼▼▼▼▼ 모달 관련 함수들 ▼▼▼▼▼
+function openHyperlinkModal() {
+    if (document.querySelector('.modal-overlay')) return;
+
+    const modalOverlay = document.createElement('div');
+    modalOverlay.className = 'modal-overlay';
+    modalOverlay.innerHTML = `
+        <div class="modal-content" id="hyperlink-modal">
+            <h3>하이퍼링크 추가</h3>
+            <div class="form-group">
+                <label for="link-text-input"><span>내용 (표시될 텍스트)</span></label>
+                <input type="text" id="link-text-input" placeholder="예: 구글 홈페이지">
+            </div>
+            <div class="form-group">
+                <label for="link-url-input"><span>경로 (URL)</span></label>
+                <input type="text" id="link-url-input" placeholder="예: https://www.google.com">
+            </div>
+            <div class="modal-buttons">
+                <button id="modal-cancel">취소</button>
+                <button id="modal-add-link">추가</button>
+            </div>
+        </div>`;
+    document.body.appendChild(modalOverlay);
+    modalOverlay.style.display = 'flex';
+    document.getElementById('link-text-input').focus();
+
+    const closeModal = () => document.body.removeChild(modalOverlay);
+    document.getElementById('modal-cancel').onclick = closeModal;
+    modalOverlay.onclick = (e) => { if (e.target === modalOverlay) closeModal(); };
+    document.getElementById('modal-add-link').onclick = insertHyperlink;
+}
+
+function insertHyperlink() {
+    const text = document.getElementById('link-text-input').value.trim();
+    const url = document.getElementById('link-url-input').value.trim();
+
+    if (!text || !url) {
+        alert('내용과 경로를 모두 입력해주세요.');
+        return;
+    }
+
+    const hyperlink = `<a href="${url}" target="_blank" rel="noopener noreferrer">${text}</a>`;
+    insertTextIntoTextarea(hyperlink);
+    document.body.removeChild(document.querySelector('.modal-overlay'));
+}
+
+// 새 함수: 파일 경로 추가 모달 열기
+function openFilePathModal() {
+    if (document.querySelector('.modal-overlay')) return;
+
+    const modalOverlay = document.createElement('div');
+    modalOverlay.className = 'modal-overlay';
+    modalOverlay.innerHTML = `
+        <div class="modal-content" id="filepath-modal">
+            <h3>공유 폴더/파일 경로 추가</h3>
+            <div class="form-group">
+                <label for="filepath-input"><span>경로</span></label>
+                <input type="text" id="filepath-input" placeholder="예: \\\\Server\\Share\\Folder">
+            </div>
+            <div class="modal-buttons">
+                <button id="modal-cancel">취소</button>
+                <button id="modal-add-filepath">추가</button>
+            </div>
+        </div>`;
+    document.body.appendChild(modalOverlay);
+    modalOverlay.style.display = 'flex';
+    document.getElementById('filepath-input').focus();
+
+    const closeModal = () => document.body.removeChild(modalOverlay);
+    document.getElementById('modal-cancel').onclick = closeModal;
+    modalOverlay.onclick = (e) => { if (e.target === modalOverlay) closeModal(); };
+    document.getElementById('modal-add-filepath').onclick = insertFilePath;
+}
+
+// 새 함수: 파일 경로를 내용에 삽입
+function insertFilePath() {
+    const path = document.getElementById('filepath-input').value.trim();
+    if (!path) {
+        alert('경로를 입력해주세요.');
+        return;
+    }
+    // data-path 속성에 경로를 저장하여 JS에서 접근할 수 있도록 함
+    const filePathHtml = `<div class="file-path-container"><span class="path-text">${path}</span><button type="button" class="copy-path-btn" data-path="${path}">복사</button></div>`;
+    insertTextIntoTextarea(filePathHtml);
+    document.body.removeChild(document.querySelector('.modal-overlay'));
+}
+
+// 공통 함수: 텍스트를 Textarea의 현재 커서 위치에 삽입
+function insertTextIntoTextarea(htmlToInsert) {
+    const textarea = document.getElementById('editor-contents-textarea');
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const textBefore = textarea.value.substring(0, start);
+    const textAfter = textarea.value.substring(end, textarea.value.length);
+    textarea.value = textBefore + htmlToInsert + textAfter;
+    
+    textarea.selectionStart = textarea.selectionEnd = start + htmlToInsert.length;
+    textarea.focus();
+    // Textarea 높이 자동 조절
+    textarea.dispatchEvent(new Event('input'));
+}
+
+// ▲▲▲▲▲ 여기까지 모달 관련 함수들 ▲▲▲▲▲
+
+
+function setupTagInput(keywords) {
+    const container = document.getElementById('tag-container');
+    const input = document.getElementById('tag-input');
+    keywords.forEach(keyword => container.insertBefore(createTag(keyword), input));
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ',') {
+            e.preventDefault();
+            const tagText = input.value.trim();
+            if (tagText) {
+                container.insertBefore(createTag(tagText), input);
+                input.value = '';
+            }
+        }
+    });
+    container.addEventListener('click', (e) => {
+        if (e.target.classList.contains('remove-tag')) e.target.parentElement.remove();
+    });
+}
+
+function createTag(text) {
+    const tag = document.createElement('div');
+    tag.className = 'tag-item';
+    tag.innerHTML = `<span>${text}</span> <span class="remove-tag" title="삭제">x</span>`;
+    return tag;
+}
+
+function setupParentSelectorModal(currentParentIds) {
+    const modalOverlay = document.createElement('div');
+    modalOverlay.className = 'modal-overlay';
+    modalOverlay.innerHTML = `<div class="modal-content"><h3>부모 문서 선택</h3><input type="text" id="modal-search-input" placeholder="검색으로 필터링..."><div id="modal-tree-container"></div><div class="modal-buttons"><button id="modal-cancel">취소</button><button id="modal-select">선택 완료</button></div></div>`;
+    document.body.appendChild(modalOverlay);
+    modalOverlay.style.display = 'flex';
+    const modalTreeContainer = document.getElementById('modal-tree-container');
+    const searchInput = document.getElementById('modal-search-input');
+
+    const renderModalTree = (filterText = '') => {
+        modalTreeContainer.innerHTML = '';
+        const rootUl = document.createElement('ul');
+        modalTreeContainer.appendChild(rootUl);
+        const tree = buildTreeFromMap();
+        const filteredTree = filterText ? filterTree(tree, filterText.toLowerCase()) : tree;
+        renderTree(filteredTree, rootUl, true, currentParentIds);
+    };
+    renderModalTree();
+    searchInput.addEventListener('keyup', () => renderModalTree(searchInput.value));
+
+    document.getElementById('modal-select').onclick = () => {
+        const selectedIds = [], selectedTitles = [];
+        modalTreeContainer.querySelectorAll('input[type="checkbox"]:checked').forEach(cb => {
+            selectedIds.push(cb.dataset.id);
+            selectedTitles.push(cb.dataset.title);
+        });
+        const parentDisplay = document.getElementById('parent-display');
+        parentDisplay.innerHTML = '';
+        if (selectedIds.length > 0) {
+            selectedIds.forEach((id, index) => {
+                const parentTag = document.createElement('div');
+                parentTag.className = 'parent-tag';
+                parentTag.dataset.parentId = id;
+                parentTag.innerHTML = `<span>${selectedTitles[index]}</span><span class="remove-parent-tag" title="삭제">x</span>`;
+                parentDisplay.appendChild(parentTag);
+            });
+        } else {
+            parentDisplay.textContent = '없음';
+        }
+        closeModal();
+    };
+    const closeModal = () => document.body.removeChild(modalOverlay);
+    document.getElementById('modal-cancel').onclick = closeModal;
+    modalOverlay.onclick = (e) => { if (e.target === modalOverlay) closeModal(); };
+}
+
+function renderTree(nodes, container, isModal, checkedIds = []) {
+    nodes.forEach(node => {
+        const listItem = document.createElement('li');
+        const hasChildren = node.children && node.children.length > 0;
+        const itemContainer = document.createElement('div');
+        itemContainer.className = 'item-container';
+        if (hasChildren) {
+            const expandedIds = isModal ? [] : getExpandedState();
+            const isCollapsed = !expandedIds.includes(node.id);
+            if (!isModal && isCollapsed) listItem.classList.add('collapsed');
+            else if (isModal) listItem.classList.add('collapsed');
+            const toggleBtn = document.createElement('span');
+            toggleBtn.className = 'toggle-btn';
+            toggleBtn.textContent = listItem.classList.contains('collapsed') ? '+' : '-';
+            toggleBtn.onclick = (e) => {
+                e.stopPropagation();
+                const nowIsCollapsed = listItem.classList.toggle('collapsed');
+                toggleBtn.textContent = nowIsCollapsed ? '+' : '-';
+                if (!isModal) {
+                    let currentState = getExpandedState();
+                    if (nowIsCollapsed) {
+                        currentState = currentState.filter(id => id !== node.id);
+                    } else {
+                        if (!currentState.includes(node.id)) currentState.push(node.id);
+                    }
+                    saveExpandedState(currentState);
+                }
+            };
+            itemContainer.appendChild(toggleBtn);
+        } else {
+            const emptySpan = document.createElement('span');
+            emptySpan.style.display = 'inline-block';
+            emptySpan.style.width = '20px';
+            itemContainer.appendChild(emptySpan);
+        }
+        if (isModal) {
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.className = 'modal-checkbox';
+            checkbox.dataset.id = node.id;
+            checkbox.dataset.title = node.data.title;
+            if (checkedIds.includes(node.id)) checkbox.checked = true;
+            if (node.id === currentSelectedDocId) checkbox.disabled = true;
+            itemContainer.appendChild(checkbox);
+        }
+        const titleSpan = document.createElement('span');
+        titleSpan.className = 'tree-item-title';
+        titleSpan.textContent = node.data.title;
+        titleSpan.dataset.id = node.id;
+        if (!isModal) {
+            titleSpan.draggable = true;
+            titleSpan.addEventListener('dragstart', (e) => { e.stopPropagation(); e.dataTransfer.setData('text/plain', node.id); e.dataTransfer.effectAllowed = 'move'; setTimeout(() => e.target.classList.add('dragging'), 0); });
+            titleSpan.addEventListener('dragend', (e) => e.target.classList.remove('dragging'));
+            titleSpan.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; e.target.classList.add('drop-target'); });
+            titleSpan.addEventListener('dragleave', (e) => e.target.classList.remove('drop-target'));
+            titleSpan.addEventListener('drop', handleDrop);
+            titleSpan.onclick = () => {
+                const currentActive = document.querySelector('#tree-root .tree-item-title.active');
+                if (currentActive) currentActive.classList.remove('active');
+                titleSpan.classList.add('active');
+                loadDocumentIntoEditor(node.id, node.data);
+            };
+        }
+        itemContainer.appendChild(titleSpan);
+        listItem.appendChild(itemContainer);
+        if (hasChildren) {
+            const childrenContainer = document.createElement('ul');
+            listItem.appendChild(childrenContainer);
+            renderTree(node.children, childrenContainer, isModal, checkedIds);
+        }
+        container.appendChild(listItem);
+    });
+}
+
+function filterTree(nodes, filterText) {
+    const filteredNodes = [];
+    for (const node of nodes) {
+        let matches = node.data.title.toLowerCase().includes(filterText);
+        let children = [];
+        if (node.children && node.children.length > 0) {
+            children = filterTree(node.children, filterText);
+        }
+        if (matches || children.length > 0) {
+            filteredNodes.push({ ...node, children: children });
+        }
+    }
+    return filteredNodes;
+}
+
+async function handleDrop(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    e.target.classList.remove('drop-target');
+    const draggedDocId = e.dataTransfer.getData('text/plain');
+    const newParentId = e.target.dataset.id;
+    if (draggedDocId === newParentId) return;
+    let tempId = newParentId;
+    while (tempId) {
+        if (tempId === draggedDocId) {
+            alert("자신의 하위 항목으로 문서를 이동할 수 없습니다.");
+            return;
+        }
+        const parentNode = allDocsMap.get(tempId);
+        if (!parentNode) break;
+        tempId = parentNode.data.parentIds && parentNode.data.parentIds.length > 0 ? parentNode.data.parentIds[0] : null;
+    }
+    try {
+        await db.collection("helps").doc(draggedDocId).update({ parentIds: [newParentId] });
+        buildAndRenderTree();
+    } catch (error) {
+        console.error("부모 변경 중 오류:", error);
+        alert("부모를 변경하는 데 실패했습니다.");
+    }
+}
+
+function buildTreeFromMap() {
+    allDocsMap.forEach(node => node.children = []);
+    const tree = [];
+    allDocsMap.forEach(node => {
+        const parentIds = node.data.parentIds || [];
+        if (parentIds.length === 0) {
+            tree.push(node);
+        } else {
+            parentIds.forEach(parentId => {
+                if (allDocsMap.has(parentId)) {
+                    allDocsMap.get(parentId).children.push(node);
+                }
+            });
+        }
+    });
+    return tree;
+}
+
+async function buildAndRenderTree() {
+    if (!treeRoot) return;
+    treeRoot.innerHTML = '<p class="info-text">데이터 로딩 중...</p>';
+    try {
+        const snapshot = await db.collection("helps").get();
+        if (snapshot.empty) {
+            treeRoot.innerHTML = '<p class="info-text">데이터가 없습니다.</p>';
+            return;
+        }
+        allDocsMap.clear();
+        snapshot.forEach(doc => {
+            allDocsMap.set(doc.id, { id: doc.id, data: doc.data(), children: [] });
+        });
+        const tree = buildTreeFromMap();
+        treeRoot.innerHTML = '';
+        const rootUl = document.createElement('ul');
+        treeRoot.appendChild(rootUl);
+        renderTree(tree, rootUl, false);
+    } catch (error) {
+        console.error("트리 생성 중 오류:", error);
+        treeRoot.innerHTML = '<p class="info-text">데이터를 불러오는 데 실패했습니다.</p>';
+    }
+}
+
+let isResizing = false;
+if (resizer) {
+    resizer.addEventListener('mousedown', (e) => {
+        isResizing = true;
+        e.preventDefault();
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', handleMouseUp);
+    });
+}
+function handleMouseMove(e) {
+    if (!isResizing || !treeContainer) return;
+    const containerRect = treeContainer.parentElement.getBoundingClientRect();
+    let newLeftWidth = e.clientX - containerRect.left;
+    if (newLeftWidth < 200) newLeftWidth = 200;
+    if (newLeftWidth > containerRect.width - 200) newLeftWidth = containerRect.width - 200;
+    treeContainer.style.width = `${newLeftWidth}px`;
+}
+function handleMouseUp() {
+    isResizing = false;
+    document.removeEventListener('mousemove', handleMouseMove);
+    document.removeEventListener('mouseup', handleMouseUp);
+}
+
+function toggleMode() {
+    const isViewerVisible = viewerContainer.style.display !== 'none';
+    if (isViewerVisible) {
+        viewerContainer.style.display = 'none';
+        adminContainer.style.display = 'block';
+        modeToggleButton.textContent = '뷰어 모드로 전환';
+        buildAndRenderTree();
+    } else {
+        viewerContainer.style.display = 'block';
+        adminContainer.style.display = 'none';
+        modeToggleButton.textContent = '관리자 모드';
+        navigateTo(null, 'Home');
+    }
+}
+
+// =============================================================
+//  전역 공지/안내문 관련 함수들
+// =============================================================
+
+async function loadGlobalLeftMargin() {
+    try {
+        const docSnap = await db.collection("globals").doc("left_margin").get();
+        if (docSnap.exists) {
+            const data = docSnap.data();
+            leftMarginContainer.textContent = data.content || '';
+        } else {
+            leftMarginContainer.textContent = '안내문이 없습니다.';
+        }
+    } catch (error) {
+        console.error("안내문 로딩 오류:", error);
+        leftMarginContainer.textContent = '안내문을 불러오는 데 실패했습니다.';
+    }
+}
+
+async function loadGlobalNoticeEditor() {
+    const currentActive = document.querySelector('#tree-root .tree-item-title.active');
+    if (currentActive) {
+        currentActive.classList.remove('active');
+    }
+    currentSelectedDocId = null;
+
+    editorContent.innerHTML = '<p class="info-text">안내문 내용을 불러오는 중...</p>';
+    try {
+        const docSnap = await db.collection("globals").doc("left_margin").get();
+        const currentContent = docSnap.exists ? docSnap.data().content : '';
+
+        editorContent.innerHTML = `
+            <h3>공지/안내문 수정</h3>
+            <div class="form-group">
+                <label><span>모든 페이지 좌측에 공통으로 표시될 내용</span></label>
+                <textarea id="global-notice-textarea" style="min-height: 200px; resize: vertical;"></textarea>
+            </div>
+            <div class="button-group">
+                <button id="save-global-notice-button">저장하기</button>
+            </div>
+        `;
+        document.getElementById('global-notice-textarea').value = currentContent;
+        document.getElementById('save-global-notice-button').onclick = saveGlobalNotice;
+
+    } catch (error) {
+        console.error("안내문 편집기 로딩 오류:", error);
+        editorContent.innerHTML = '<p class="info-text">편집기를 불러오는 데 실패했습니다.</p>';
+    }
+}
+
+async function saveGlobalNotice() {
+    const saveButton = document.getElementById('save-global-notice-button');
+    const newContent = document.getElementById('global-notice-textarea').value;
+
+    saveButton.textContent = '저장 중...';
+    saveButton.disabled = true;
+
+    try {
+        await db.collection("globals").doc("left_margin").set({
+            content: newContent
+        });
+        alert("안내문이 저장되었습니다.");
+        await loadGlobalLeftMargin();
+    } catch (error) {
+        console.error("안내문 저장 오류:", error);
+        alert("저장에 실패했습니다.");
+    } finally {
+        saveButton.textContent = '저장하기';
+        saveButton.disabled = false;
+    }
+}
+
+// -------------------------------------------------------------
+// 이벤트 리스너 설정 및 초기화
+// -------------------------------------------------------------
+
+// 클립보드 복사 이벤트 위임 (동적으로 생성되는 버튼 처리)
+document.addEventListener('click', function(e) {
+    if (e.target.classList.contains('copy-path-btn')) {
+        const path = e.target.dataset.path;
+        // 임시 textarea를 만들어 복사하는 트릭 사용
+        const tempTextArea = document.createElement('textarea');
+        tempTextArea.value = path;
+        document.body.appendChild(tempTextArea);
+        tempTextArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(tempTextArea);
+        
+        // 사용자에게 복사 완료 피드백
+        const originalText = e.target.textContent;
+        e.target.textContent = '복사 완료!';
+        setTimeout(() => {
+            e.target.textContent = originalText;
+        }, 1500);
+    }
+});
+
+if (searchButton) {
+    searchButton.addEventListener('click', performSearch);
+}
+if (searchInput) {
+    searchInput.addEventListener('keyup', (event) => {
+        if (event.key === 'Enter') performSearch();
+    });
+}
+if (addNewButton) {
+    addNewButton.addEventListener('click', prepareNewDocumentForm);
+}
+if (editGlobalNoticeButton) {
+    editGlobalNoticeButton.addEventListener('click', loadGlobalNoticeEditor);
+}
+if (modeToggleButton) {
+    modeToggleButton.addEventListener('click', toggleMode);
+}
+if (appTitle) {
+    appTitle.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (adminContainer.style.display !== 'none') {
+            toggleMode();
+        } else {
+            navigateTo(null, 'Home');
+        }
+    });
+}
+
+// 초기 로드
+navigateTo(null, 'Home');
+loadGlobalLeftMargin();
+</script>
+
+
+<!-- ============================================================= -->
+<!--                                                             -->
+<!--  스타일시트 (style.css)                                        -->
+<!--                                                             -->
+<!-- ============================================================= -->
+<style>
+/* =============================================================
+    기본 및 공통 스타일
+   ============================================================= */
+body { 
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif; 
+    background-color: #f4f7f6; 
+    color: #333; 
+    margin: 0; 
+    padding: 0;
+}
+
+.app-header { 
+    display: flex; 
+    justify-content: space-between; 
+    align-items: center; 
+    padding: 10px 40px; 
+    background-color: #34495e; 
+    color: white; 
+    user-select: none;
+}
+
+.app-header h1 { margin: 0; font-size: 24px; }
+#app-title { color: white; text-decoration: none; cursor: pointer; }
+#mode-toggle-btn { background-color: #3498db; color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; }
+.info-text { color: #95a5a6; }
+h2, h3, h4 { color: #2c3e50; margin-top: 0; padding-bottom: 10px; border-bottom: 1px solid #ecf0f1; }
+.app-header h1, #mainContentContainer h2, .keyword-tag-container h4, .result-item h3 { border: none; padding-bottom: 0; }
+
+/* =============================================================
+    뷰어 모드 스타일
+   ============================================================= */
+.viewer-layout { 
+    display: flex;
+    justify-content: center;
+    padding: 0 40px;
+    gap: 30px;
+}
+
+.main-content-area { 
+    width: 100%; 
+    max-width: 800px;
+    flex-shrink: 0; 
+}
+
+.side-margin {
+    flex: 1 1 260px; 
+    max-width: 1000px;
+    font-size: 14px;
+    color: #555;
+    padding-top: 30px;
+}
+
+#leftMargin {
+    padding-top: 20px;
+    white-space: pre-wrap; 
+    word-wrap: break-word; 
+}
+#mainContentContainer div, .result-item div {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    user-select: text;
+}
+#mainContentContainer a, .result-item a {
+    color: #3498db;
+    font-weight: 600;
+    text-decoration: underline;
+}
+#mainContentContainer a:hover, .result-item a:hover {
+    color: #2980b9;
+}
+
+#viewer-container .container { 
+    max-width: 800px; 
+    margin: 20px auto; 
+    background-color: #ffffff; 
+    padding: 30px; 
+    border-radius: 10px; 
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1); 
+}
+
+.search-box { display: flex; margin: 20px 0; }
+#searchInput { flex-grow: 1; padding: 12px; font-size: 16px; border: 2px solid #ddd; border-radius: 5px 0 0 5px; outline: none; transition: border-color 0.3s; }
+#searchInput:focus { border-color: #3498db; }
+#searchButton { padding: 0 25px; font-size: 16px; font-weight: bold; color: white; background-color: #3498db; border: none; border-radius: 0 5px 5px 0; cursor: pointer; transition: background-color 0.3s; }
+#searchButton:hover { background-color: #2980b9; }
+
+#breadcrumbContainer { padding: 10px 15px; background-color: #ecf0f1; border-radius: 5px; margin-bottom: 20px; min-height: 20px; }
+.breadcrumb-path { margin-bottom: 5px; }
+.breadcrumb-path:last-child { margin-bottom: 0; }
+.breadcrumb-item { color: #2980b9; text-decoration: none; font-weight: bold; cursor: pointer; }
+.breadcrumb-item:hover { text-decoration: underline; }
+.breadcrumb-separator { margin: 0 10px; color: #7f8c8d; }
+.breadcrumb-current { color: #34495e; font-weight: bold; }
+
+#mainContentContainer { padding-bottom: 20px; margin-bottom: 20px; border-bottom: 2px solid #ecf0f1; }
+.keyword-tag-container { margin-top: 20px; padding-top: 20px; border-top: 1px solid #f0f0f0; }
+.keyword-tag-container h4 { margin-bottom: 10px; font-size: 14px; color: #7f8c8d; }
+.keyword-tag { display: inline-block; background-color: #7f8c8d; color: white; padding: 4px 10px; margin-right: 8px; margin-bottom: 8px; border-radius: 15px; font-size: 13px; }
+
+#resultsContainer { margin-top: 20px; }
+.result-item { background-color: #f9f9f9; border: 1px solid #eee; padding: 15px; margin-bottom: 10px; border-radius: 5px; cursor: pointer; transition: background-color 0.2s; }
+.result-item:hover { background-color: #f0f0f0; }
+.result-item h3 { margin: 0 0 10px; color: #2980b9; }
+.highlight { background-color: #f1c40f; color: #333; font-weight: bold; padding: 2px 4px; border-radius: 3px; }
+
+.search-category-header {
+    margin-top: 25px;
+    margin-bottom: 15px;
+    font-size: 1.1em;
+    font-weight: bold;
+    color: #2c3e50;
+    border-bottom: 2px solid #ecf0f1;
+    padding-bottom: 8px;
+}
+.search-result-separator {
+    margin: 40px 0;
+    border: 0;
+    height: 1px;
+    background-image: linear-gradient(to right, rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.25), rgba(0, 0, 0, 0));
+}
+
+/* =============================================================
+    관리자 모드 스타일
+   ============================================================= */
+.admin-layout { display: flex; gap: 0; margin: 20px; height: calc(100vh - 125px); border: 1px solid #ddd; border-radius: 8px; overflow: hidden; }
+#tree-container { width: 30%; min-width: 200px; background-color: #ffffff; padding: 20px; display: flex; flex-direction: column; box-sizing: border-box; }
+.tree-header { display: flex; justify-content: flex-start; align-items: center; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid #ecf0f1; }
+#add-new-button { background-color: #3498db; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 14px; }
+#edit-global-notice-button { margin-left: 10px; background-color: #27ae60; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 14px; }
+#tree-root { flex-grow: 1; overflow-y: auto; overflow-x: auto; user-select: none; }
+#resizer { flex-shrink: 0; width: 10px; background-color: #ecf0f1; cursor: col-resize; user-select: none; }
+#editor-container { flex-grow: 1; background-color: #ffffff; padding: 20px; overflow-y: auto; box-sizing: border-box; }
+.form-group { margin-bottom: 20px; }
+.form-group label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-weight: bold;
+    margin-bottom: 8px;
+    color: #555;
+    flex-wrap: wrap;
+}
+.form-group label .label-buttons { display: flex; gap: 8px; }
+
+.form-group input, .form-group textarea { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 16px; box-sizing: border-box; user-select: text; }
+#editor-contents-textarea { resize: vertical; min-height: 80px; overflow-y: hidden; }
+.tag-input-container { display: flex; flex-wrap: wrap; align-items: center; padding: 5px; border: 1px solid #ddd; border-radius: 4px; min-height: 40px; }
+.tag-item { display: flex; align-items: center; background-color: #3498db; color: white; padding: 5px 10px; margin: 5px; border-radius: 15px; font-size: 14px; }
+.remove-tag { margin-left: 8px; cursor: pointer; font-weight: bold; }
+#parent-display-wrapper { display: flex; align-items: center; gap: 10px; }
+#parent-display { flex-grow: 1; display: flex; flex-wrap: wrap; gap: 5px; padding: 10px; background-color: #ecf0f1; border-radius: 4px; min-height: 20px; }
+.parent-tag { background-color: #95a5a6; color: white; padding: 3px 8px; border-radius: 4px; font-size: 13px; }
+#change-parent-btn { padding: 8px 12px; border: 1px solid #bdc3c7; background-color: #fdfdfd; border-radius: 5px; cursor: pointer; }
+.button-group { display: flex; justify-content: flex-end; gap: 10px; }
+#save-button, #delete-button, #save-global-notice-button { padding: 10px 20px; border: none; border-radius: 5px; font-size: 16px; font-weight: bold; cursor: pointer; }
+#save-button, #save-global-notice-button { background-color: #27ae60; color: white; }
+#delete-button { background-color: #c0392b; color: white; }
+
+.inline-btn {
+    background-color: #ecf0f1;
+    border: 1px solid #bdc3c7;
+    padding: 4px 8px;
+    font-size: 12px;
+    font-weight: normal;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+.inline-btn:hover {
+    background-color: #e0e4e8;
+}
+
+/* ▼▼▼▼▼ 파일 경로 스타일 추가 ▼▼▼▼▼ */
+.file-path-container {
+    display: flex;
+    align-items: center;
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    padding: 8px 12px;
+    margin: 8px 0;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 14px;
+}
+.path-text {
+    color: #495057;
+    flex-grow: 1;
+    overflow-x: auto;
+    white-space: nowrap;
+    scrollbar-width: thin;
+}
+.copy-path-btn {
+    margin-left: 12px;
+    background-color: #6c757d;
+    color: white;
+    border: none;
+    padding: 5px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    flex-shrink: 0;
+    transition: background-color 0.2s;
+}
+.copy-path-btn:hover {
+    background-color: #5a6268;
+}
+/* ▲▲▲▲▲ 여기까지 추가 ▲▲▲▲▲ */
+
+
+/* =============================================================
+    트리 및 모달 스타일
+   ============================================================= */
+.modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.6); display: none; justify-content: center; align-items: center; z-index: 1000; }
+.modal-content { background-color: white; padding: 20px 30px; border-radius: 10px; width: 85%; max-width: 600px; max-height: 80%; display: flex; flex-direction: column; }
+#hyperlink-modal, #filepath-modal { max-width: 500px; }
+#modal-search-input { width: 100%; padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 5px; margin-bottom: 15px; box-sizing: border-box; }
+#modal-tree-container { flex-grow: 1; overflow-y: auto; border: 1px solid #eee; padding: 10px; }
+.modal-buttons { text-align: right; margin-top: 15px; }
+.modal-buttons button { padding: 8px 15px; margin-left: 10px; border-radius: 5px; border: 1px solid #ccc; cursor: pointer;}
+#modal-add-link, #modal-select, #modal-add-filepath { background-color: #3498db; color: white; border-color: #3498db;}
+
+
+#tree-root > ul { padding-left: 0; }
+#tree-root ul, #modal-tree-container ul { list-style-type: none; padding-left: 20px; position: relative; }
+#tree-root li, #modal-tree-container li { margin: 2px 0; white-space: nowrap; }
+#modal-tree-container ul { border-left: 1px solid #ddd; }
+#modal-tree-container li { display: flex; flex-direction: column; }
+#modal-tree-container li::before { content: ''; position: absolute; top: 15px; left: -20px; border-bottom: 1px solid #ddd; width: 15px; height: 0; }
+.item-container { display: flex; align-items: center; }
+.toggle-btn { cursor: pointer; font-weight: bold; font-size: 16px; margin-right: 4px; display: inline-block; width: 20px; text-align: center; color: #7f8c8d; }
+.modal-checkbox { cursor: pointer; margin-right: 4px; width: 20px; accent-color: #3498db; }
+.tree-item-title { padding: 5px 8px; border-radius: 5px; cursor: pointer; transition: background-color 0.2s, opacity 0.2s; display: inline-block; }
+.tree-item-title:hover { background-color: #f0f0f0; }
+#tree-root .tree-item-title.active { background-color: #e0eaf1; font-weight: bold; }
+#modal-tree-container .tree-item-title { cursor: default; }
+li.collapsed > ul { display: none; }
+.tree-item-title.dragging { opacity: 0.4; }
+.tree-item-title.drop-target { background-color: #a2d9ce; border: 2px dashed #1abc9c; }
+
+.parent-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background-color: #95a5a6;
+    color: white;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 13px;
+}
+
+.remove-parent-tag {
+    margin-left: 4px;
+    cursor: pointer;
+    font-weight: bold;
+    font-family: 'Courier New', Courier, monospace;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+
+.remove-parent-tag:hover {
+    opacity: 1;
+}
+
+/* =============================================================
+    반응형 스타일
+   ============================================================= */
+@media (max-width: 1400px) {
+    .side-margin {
+        display: none;
+    }
+    .viewer-layout {
+        padding: 0 20px;
+    }
+}
+</style>
