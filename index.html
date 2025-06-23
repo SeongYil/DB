@@ -177,6 +177,7 @@ async function buildAllBreadcrumbPaths(startDocId) {
     return allPaths;
 }
 
+// ▼▼▼▼▼ 제목 정렬 기능 추가 ▼▼▼▼▼
 async function navigateTo(docId, docTitle) {
     if (docId) {
         breadcrumbTrail = await buildAllBreadcrumbPaths(docId);
@@ -219,12 +220,21 @@ async function navigateTo(docId, docTitle) {
         if (snapshot.empty) {
             viewerResults.innerHTML = '<p class="info-text">하위 항목이 없습니다.</p>';
         } else {
-            snapshot.forEach(childDoc => {
-                const childData = childDoc.data();
+            // 1. 문서를 배열에 담기
+            const childDocs = [];
+            snapshot.forEach(doc => {
+                childDocs.push({ id: doc.id, data: doc.data() });
+            });
+
+            // 2. 제목을 기준으로 가나다순 정렬 (한국어 기준)
+            childDocs.sort((a, b) => a.data.title.localeCompare(b.data.title, 'ko'));
+            
+            // 3. 정렬된 배열을 기반으로 화면에 표시
+            childDocs.forEach(child => {
                 const resultItem = document.createElement('div');
                 resultItem.className = 'result-item';
-                resultItem.innerHTML = `<h3>${childData.title}</h3>`;
-                resultItem.onclick = () => navigateTo(childDoc.id, childData.title);
+                resultItem.innerHTML = `<h3>${child.data.title}</h3>`;
+                resultItem.onclick = () => navigateTo(child.id, child.data.title);
                 viewerResults.appendChild(resultItem);
             });
         }
@@ -233,7 +243,10 @@ async function navigateTo(docId, docTitle) {
         viewerResults.innerHTML = '<p class="info-text">하위 목록을 불러오는 데 실패했습니다.</p>';
     }
 }
+// ▲▲▲▲▲ 여기까지 수정 ▲▲▲▲▲
 
+
+// ▼▼▼▼▼ 제목 정렬 기능 추가 ▼▼▼▼▼
 async function performSearch() {
     const searchTerm = searchInput.value.trim();
     if (!searchTerm) return;
@@ -262,6 +275,11 @@ async function performSearch() {
                 childDocs.push({ id: doc.id, data: data });
             }
         });
+
+        // 제목을 기준으로 가나다순 정렬 (한국어 기준)
+        parentDocs.sort((a, b) => a.data.title.localeCompare(b.data.title, 'ko'));
+        childDocs.sort((a, b) => a.data.title.localeCompare(b.data.title, 'ko'));
+
 
         const regex = new RegExp(searchTerm, 'gi');
 
@@ -305,6 +323,7 @@ async function performSearch() {
         viewerResults.innerHTML = '<p class="info-text">검색에 실패했습니다.</p>';
     }
 }
+// ▲▲▲▲▲ 여기까지 수정 ▲▲▲▲▲
 
 
 // =============================================================
@@ -463,12 +482,10 @@ function loadDocumentIntoEditor(docId, docData) {
     document.getElementById('delete-button').onclick = deleteDocument;
     document.getElementById('change-parent-btn').onclick = () => setupParentSelectorModal(parentIds);
     document.getElementById('add-hyperlink-btn').onclick = openHyperlinkModal;
-    document.getElementById('add-filepath-btn').onclick = openFilePathModal; // 새 버튼 이벤트 리스너
+    document.getElementById('add-filepath-btn').onclick = openFilePathModal; 
     setupTagInput(docData.keywords || []);
 }
 
-
-// ▼▼▼▼▼ 모달 관련 함수들 ▼▼▼▼▼
 function openHyperlinkModal() {
     if (document.querySelector('.modal-overlay')) return;
 
@@ -483,7 +500,7 @@ function openHyperlinkModal() {
             </div>
             <div class="form-group">
                 <label for="link-url-input"><span>경로 (URL)</span></label>
-                <input type="text" id="link-url-input" placeholder="예: https://www.google.com">
+                <input type="text" id="link-url-input" placeholder="예: google.com">
             </div>
             <div class="modal-buttons">
                 <button id="modal-cancel">취소</button>
@@ -502,11 +519,15 @@ function openHyperlinkModal() {
 
 function insertHyperlink() {
     const text = document.getElementById('link-text-input').value.trim();
-    const url = document.getElementById('link-url-input').value.trim();
+    let url = document.getElementById('link-url-input').value.trim();
 
     if (!text || !url) {
         alert('내용과 경로를 모두 입력해주세요.');
         return;
+    }
+
+    if (!url.toLowerCase().startsWith('http://') && !url.toLowerCase().startsWith('https://')) {
+        url = 'https://' + url;
     }
 
     const hyperlink = `<a href="${url}" target="_blank" rel="noopener noreferrer">${text}</a>`;
@@ -514,7 +535,6 @@ function insertHyperlink() {
     document.body.removeChild(document.querySelector('.modal-overlay'));
 }
 
-// 새 함수: 파일 경로 추가 모달 열기
 function openFilePathModal() {
     if (document.querySelector('.modal-overlay')) return;
 
@@ -542,20 +562,17 @@ function openFilePathModal() {
     document.getElementById('modal-add-filepath').onclick = insertFilePath;
 }
 
-// 새 함수: 파일 경로를 내용에 삽입
 function insertFilePath() {
     const path = document.getElementById('filepath-input').value.trim();
     if (!path) {
         alert('경로를 입력해주세요.');
         return;
     }
-    // data-path 속성에 경로를 저장하여 JS에서 접근할 수 있도록 함
     const filePathHtml = `<div class="file-path-container"><span class="path-text">${path}</span><button type="button" class="copy-path-btn" data-path="${path}">복사</button></div>`;
     insertTextIntoTextarea(filePathHtml);
     document.body.removeChild(document.querySelector('.modal-overlay'));
 }
 
-// 공통 함수: 텍스트를 Textarea의 현재 커서 위치에 삽입
 function insertTextIntoTextarea(htmlToInsert) {
     const textarea = document.getElementById('editor-contents-textarea');
     const start = textarea.selectionStart;
@@ -566,11 +583,8 @@ function insertTextIntoTextarea(htmlToInsert) {
     
     textarea.selectionStart = textarea.selectionEnd = start + htmlToInsert.length;
     textarea.focus();
-    // Textarea 높이 자동 조절
     textarea.dispatchEvent(new Event('input'));
 }
-
-// ▲▲▲▲▲ 여기까지 모달 관련 함수들 ▲▲▲▲▲
 
 
 function setupTagInput(keywords) {
@@ -916,11 +930,9 @@ async function saveGlobalNotice() {
 // 이벤트 리스너 설정 및 초기화
 // -------------------------------------------------------------
 
-// 클립보드 복사 이벤트 위임 (동적으로 생성되는 버튼 처리)
 document.addEventListener('click', function(e) {
     if (e.target.classList.contains('copy-path-btn')) {
         const path = e.target.dataset.path;
-        // 임시 textarea를 만들어 복사하는 트릭 사용
         const tempTextArea = document.createElement('textarea');
         tempTextArea.value = path;
         document.body.appendChild(tempTextArea);
@@ -928,7 +940,6 @@ document.addEventListener('click', function(e) {
         document.execCommand('copy');
         document.body.removeChild(tempTextArea);
         
-        // 사용자에게 복사 완료 피드백
         const originalText = e.target.textContent;
         e.target.textContent = '복사 완료!';
         setTimeout(() => {
@@ -1149,7 +1160,6 @@ h2, h3, h4 { color: #2c3e50; margin-top: 0; padding-bottom: 10px; border-bottom:
     background-color: #e0e4e8;
 }
 
-/* ▼▼▼▼▼ 파일 경로 스타일 추가 ▼▼▼▼▼ */
 .file-path-container {
     display: flex;
     align-items: center;
@@ -1183,7 +1193,6 @@ h2, h3, h4 { color: #2c3e50; margin-top: 0; padding-bottom: 10px; border-bottom:
 .copy-path-btn:hover {
     background-color: #5a6268;
 }
-/* ▲▲▲▲▲ 여기까지 추가 ▲▲▲▲▲ */
 
 
 /* =============================================================
