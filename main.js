@@ -59,9 +59,6 @@ const EXPANDED_STATE_KEY = 'treeExpandedState';
 //  뷰어 모드 (Viewer Mode) 함수들
 // =============================================================
 
-/**
- * Breadcrumb 렌더링 함수
- */
 function renderBreadcrumbs() {
     breadcrumbContainer.innerHTML = '';
     breadcrumbTrail.forEach((item, index) => {
@@ -89,24 +86,19 @@ function renderBreadcrumbs() {
     });
 }
 
-/**
- * Breadcrumb 경로 생성 헬퍼 함수
- */
 async function buildBreadcrumbsFor(startDocId) {
     let trail = [];
     let currentId = startDocId;
     while (currentId) {
         let docData;
-        // 먼저 메모리에 저장된 allDocsMap에서 찾아봄 (DB 요청 줄이기)
         if (allDocsMap.has(currentId)) {
             docData = allDocsMap.get(currentId).data;
         } else {
-            // 없으면 DB에서 직접 가져옴
             const docSnap = await db.collection("helps").doc(currentId).get();
             if (docSnap.exists) {
                 docData = docSnap.data();
             } else {
-                break; // 문서가 없으면 경로 추적 중단
+                break; 
             }
         }
         trail.unshift({ id: currentId, title: docData.title });
@@ -116,11 +108,7 @@ async function buildBreadcrumbsFor(startDocId) {
     return trail;
 }
 
-/**
- * [탐색 모드] 메인 탐색 함수
- */
 async function navigateTo(docId, docTitle) {
-    // 1. 전체 부모 경로 생성
     if (docId) {
         breadcrumbTrail = await buildBreadcrumbsFor(docId);
     } else {
@@ -128,11 +116,9 @@ async function navigateTo(docId, docTitle) {
     }
     renderBreadcrumbs();
 
-    // 2. 화면 초기화
     viewerMainContent.innerHTML = '';
     viewerResults.innerHTML = '<p class="info-text">목록을 불러오는 중...</p>';
 
-    // 3. 현재 문서 내용 표시
     if (docId) {
         try {
             const docSnap = await db.collection("helps").doc(docId).get();
@@ -154,7 +140,6 @@ async function navigateTo(docId, docTitle) {
          viewerMainContent.innerHTML = '<h2>Home</h2><p>최상위 문서 목록입니다.</p>';
     }
 
-    // 4. 자식 목록 표시
     try {
         let query = docId === null
             ? db.collection("helps").where("parentIds", "==", [])
@@ -180,9 +165,6 @@ async function navigateTo(docId, docTitle) {
     }
 }
 
-/**
- * [검색 모드] 키워드 검색 함수
- */
 async function performSearch() {
     const searchTerm = searchInput.value.trim();
     if (!searchTerm) return;
@@ -218,6 +200,9 @@ async function performSearch() {
 // 관리자 모드 (Admin Mode) 함수들
 //
 // =============================================================
+
+function getExpandedState() { return localStorage.getItem(EXPANDED_STATE_KEY) ? JSON.parse(localStorage.getItem(EXPANDED_STATE_KEY)) : []; }
+function saveExpandedState(expandedIds) { localStorage.setItem(EXPANDED_STATE_KEY, JSON.stringify(expandedIds)); }
 
 function prepareNewDocumentForm() {
     currentSelectedDocId = null; 
@@ -285,8 +270,7 @@ async function deleteDocument() {
 function loadDocumentIntoEditor(docId, docData) {
     currentSelectedDocId = docId;
     const parentIds = docData.parentIds || [];
-    editorContent.innerHTML = `<h3>${docData.title || '새 문서 작성'}</h3><div class="form-group"><label>제목</label><input type="text" id="editor-title-input" value="${docData.title || ''}"></div><div class="form-group"><label>내용</label><textarea id="editor-contents-textarea">${docData.contents || ''}</textarea></div><div class="form-group"><label>검색 키워드</label><div id="tag-container" class="tag-input-container"><input type="text" id="tag-input" placeholder="키워드 입력 후 Enter"></div></div><div class="form-group"><label>부모 문서</label><div id="parent-display-wrapper"><div id="parent-display"></div><button id="change-parent-btn">변경</button></div></div><div class="button-group"><button id="save-button">저장하기</button><button id="delete-button">삭제하기</button></div>`;
-    
+    editorContent.innerHTML = `<h3>${docData.title || '새 문서 작성'}</h3><div class="form-group"><label>제목</label><input type="text" id="editor-title-input" value="${docData.title || ''}"></div><div class="form-group"><label>내용</label><textarea id="editor-contents-textarea"></textarea></div><div class="form-group"><label>검색 키워드</label><div id="tag-container" class="tag-input-container"><input type="text" id="tag-input" placeholder="키워드 입력 후 Enter"></div></div><div class="form-group"><label>부모 문서</label><div id="parent-display-wrapper"><div id="parent-display"></div><button id="change-parent-btn">변경</button></div></div><div class="button-group"><button id="save-button">저장하기</button><button id="delete-button">삭제하기</button></div>`;
     const parentDisplay = document.getElementById('parent-display');
     parentDisplay.innerHTML = '';
     if (parentIds.length > 0) {
@@ -303,15 +287,14 @@ function loadDocumentIntoEditor(docId, docData) {
     } else {
         parentDisplay.textContent = '없음';
     }
-
     const textarea = document.getElementById('editor-contents-textarea');
+    textarea.value = docData.contents || '';
     function autoResize() {
         this.style.height = 'auto';
         this.style.height = (this.scrollHeight) + 'px';
     }
     textarea.addEventListener('input', autoResize, false);
     setTimeout(() => { if(textarea) autoResize.call(textarea); }, 0);
-
     document.getElementById('save-button').onclick = saveChanges;
     document.getElementById('delete-button').onclick = deleteDocument;
     document.getElementById('change-parent-btn').onclick = () => setupParentSelectorModal(parentIds);
@@ -396,6 +379,7 @@ function renderTree(nodes, container, isModal, checkedIds = []) {
         const hasChildren = node.children && node.children.length > 0;
         const itemContainer = document.createElement('div');
         itemContainer.className = 'item-container';
+
         if (hasChildren) {
             const expandedIds = isModal ? [] : getExpandedState();
             const isCollapsed = !expandedIds.includes(node.id);
@@ -425,6 +409,7 @@ function renderTree(nodes, container, isModal, checkedIds = []) {
             emptySpan.style.width = '20px';
             itemContainer.appendChild(emptySpan);
         }
+
         if (isModal) {
             const checkbox = document.createElement('input');
             checkbox.type = 'checkbox';
@@ -435,10 +420,12 @@ function renderTree(nodes, container, isModal, checkedIds = []) {
             if (node.id === currentSelectedDocId) checkbox.disabled = true;
             itemContainer.appendChild(checkbox);
         }
+
         const titleSpan = document.createElement('span');
         titleSpan.className = 'tree-item-title';
         titleSpan.textContent = node.data.title;
         titleSpan.dataset.id = node.id;
+
         if (!isModal) {
             titleSpan.draggable = true;
             titleSpan.addEventListener('dragstart', (e) => { e.stopPropagation(); e.dataTransfer.setData('text/plain', node.id); e.dataTransfer.effectAllowed = 'move'; setTimeout(() => e.target.classList.add('dragging'), 0); });
@@ -453,8 +440,10 @@ function renderTree(nodes, container, isModal, checkedIds = []) {
                 loadDocumentIntoEditor(node.id, node.data);
             };
         }
+        
         itemContainer.appendChild(titleSpan);
         listItem.appendChild(itemContainer);
+
         if (hasChildren) {
             const childrenContainer = document.createElement('ul');
             listItem.appendChild(childrenContainer);
@@ -585,9 +574,10 @@ async function createThematicDummies() {
                 parentId = docRef.id;
                 batch.set(docRef, { title: categoryName, contents: `${categoryName}에 대한 모든 문서들을 포함합니다.`, keywords: ["부모", "카테고리", categoryName], parentIds: [] });
             } else {
-                const items = dummyThemes[categories[Math.floor(i / 10) % categories.length]] || [];
+                const categoryName = categories[Math.floor(i / 10) % categories.length];
+                const items = dummyThemes[categoryName] || [];
                 const itemName = items[i % items.length] || `항목 ${i}`;
-                batch.set(docRef, { title: itemName, contents: `이것은 ${itemName}에 대한 내용입니다.`, keywords: ["자식", "테스트", itemName, categories[Math.floor(i / 10) % categories.length]], parentIds: parentId ? [parentId] : [] });
+                batch.set(docRef, { title: itemName, contents: `이것은 ${itemName}에 대한 내용입니다.`, keywords: ["자식", "테스트", itemName, categoryName], parentIds: parentId ? [parentId] : [] });
             }
         }
         await batch.commit();
@@ -664,6 +654,5 @@ document.getElementById('btn-create-1').onclick = createSingleDummy;
 document.getElementById('btn-create-100').onclick = createThematicDummies;
 document.getElementById('btn-delete-all').onclick = deleteAllDocuments;
 modeToggleButton.addEventListener('click', toggleMode);
-
 setupTestPanelToggle();
 navigateTo(null, 'Home');
