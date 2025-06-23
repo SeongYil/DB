@@ -13,27 +13,37 @@
     </div>
 
     <div id="viewer-container">
-        <div class="container">
-            <div class="search-box">
-                <input type="text" id="searchInput" placeholder="검색할 키워드를 입력하세요...">
-                <button id="searchButton">검색</button>
+        <div class="viewer-layout">
+            <div id="leftMargin" class="side-margin"></div>
+            
+            <div class="main-content-area">
+                <div class="container">
+                    <div class="search-box">
+                        <input type="text" id="searchInput" placeholder="검색할 키워드를 입력하세요...">
+                        <button id="searchButton">검색</button>
+                    </div>
+                    <hr>
+                    <div id="breadcrumbContainer"></div>
+                    <div id="mainContentContainer"></div>
+                    <div id="resultsContainer">
+                        <p class="info-text">데이터를 불러오는 중입니다...</p>
+                    </div>
+                </div>
             </div>
-            <hr>
-            <div id="breadcrumbContainer"></div>
-            <div id="mainContentContainer"></div>
-            <div id="resultsContainer">
-                <p class="info-text">데이터를 불러오는 중입니다...</p>
-            </div>
+
+            <div class="side-margin"></div>
         </div>
     </div>
-
+    
     <div id="admin-container" style="display: none;">
         <div class="admin-layout">
             <div id="tree-container">
                 <div class="tree-header">
-                    <button id="add-new-button">[+] 새 문서 추가</button>
+                    <button id="add-new-button">새 문서 추가</button>
+                    <button id="edit-global-notice-button">공지/안내문 수정</button>
                 </div>
-                <div id="tree-root"></div>
+                <div id="tree-root">
+                    </div>
             </div>
             <div id="resizer"></div>
             <div id="editor-container">
@@ -42,10 +52,11 @@
                 </div>
             </div>
         </div>
-        </div>
+    </div>
 
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
-    <script src="main.js" defer></script> 
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    
+    <script src="main.js"></script>
 </body>
 </html>
