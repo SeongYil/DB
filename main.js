@@ -1,3 +1,14 @@
+// =============================================================
+//
+//  통합 문서 시스템 (main.js)
+//  - 뷰어 모드와 관리자 모드를 모두 포함하는 단일 파일
+//
+// =============================================================
+
+
+// -------------------------------------------------------------
+// Firebase 설정
+// -------------------------------------------------------------
 const firebaseConfig = {
     apiKey: "AIzaSyCBimrNdCRm88oFQZtk2ZwTOjnhrFt9y8U",
     authDomain: "honey-db.firebaseapp.com",
@@ -9,34 +20,48 @@ const firebaseConfig = {
 const app = firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
+// -------------------------------------------------------------
+// HTML 요소 가져오기
+// -------------------------------------------------------------
 const modeToggleButton = document.getElementById('mode-toggle-btn');
 const viewerContainer = document.getElementById('viewer-container');
 const adminContainer = document.getElementById('admin-container');
+
+// 뷰어 모드 요소
 const searchInput = document.getElementById('searchInput');
 const searchButton = document.getElementById('searchButton');
 const viewerMainContent = document.getElementById('mainContentContainer');
 const viewerResults = document.getElementById('resultsContainer');
 const breadcrumbContainer = document.getElementById('breadcrumbContainer');
+
+// 관리자 모드 요소
 const treeContainer = document.getElementById('tree-container');
 const editorContainer = document.getElementById('editor-container');
 const resizer = document.getElementById('resizer');
 const treeRoot = document.getElementById('tree-root');
 const editorContent = document.getElementById('editor-content');
 const addNewButton = document.getElementById('add-new-button');
+const testPanelHeader = document.getElementById('test-panel-header');
+const testPanelContent = document.getElementById('test-panel-content');
+const create1Btn = document.getElementById('btn-create-1');
+const create100Btn = document.getElementById('btn-create-100');
+const deleteAllBtn = document.getElementById('btn-delete-all');
 
+// -------------------------------------------------------------
+// 상태 관리 변수
+// -------------------------------------------------------------
 let breadcrumbTrail = [];
 let currentSelectedDocId = null;
 let allDocsMap = new Map();
 const EXPANDED_STATE_KEY = 'treeExpandedState';
 
-function getExpandedState() {
-    const state = localStorage.getItem(EXPANDED_STATE_KEY);
-    return state ? JSON.parse(state) : [];
-}
-function saveExpandedState(expandedIds) {
-    localStorage.setItem(EXPANDED_STATE_KEY, JSON.stringify(expandedIds));
-}
+// =============================================================
+//  뷰어 모드 (Viewer Mode) 함수들
+// =============================================================
 
+/**
+ * Breadcrumb 렌더링 함수
+ */
 function renderBreadcrumbs() {
     breadcrumbContainer.innerHTML = '';
     breadcrumbTrail.forEach((item, index) => {
@@ -64,16 +89,50 @@ function renderBreadcrumbs() {
     });
 }
 
+/**
+ * Breadcrumb 경로 생성 헬퍼 함수
+ */
+async function buildBreadcrumbsFor(startDocId) {
+    let trail = [];
+    let currentId = startDocId;
+    while (currentId) {
+        let docData;
+        // 먼저 메모리에 저장된 allDocsMap에서 찾아봄 (DB 요청 줄이기)
+        if (allDocsMap.has(currentId)) {
+            docData = allDocsMap.get(currentId).data;
+        } else {
+            // 없으면 DB에서 직접 가져옴
+            const docSnap = await db.collection("helps").doc(currentId).get();
+            if (docSnap.exists) {
+                docData = docSnap.data();
+            } else {
+                break; // 문서가 없으면 경로 추적 중단
+            }
+        }
+        trail.unshift({ id: currentId, title: docData.title });
+        currentId = docData.parentIds && docData.parentIds.length > 0 ? docData.parentIds[0] : null;
+    }
+    trail.unshift({ id: null, title: 'Home' });
+    return trail;
+}
+
+/**
+ * [탐색 모드] 메인 탐색 함수
+ */
 async function navigateTo(docId, docTitle) {
-    const existingIndex = breadcrumbTrail.findIndex(item => item.id === docId);
-    if (existingIndex !== -1) {
-        breadcrumbTrail = breadcrumbTrail.slice(0, existingIndex + 1);
+    // 1. 전체 부모 경로 생성
+    if (docId) {
+        breadcrumbTrail = await buildBreadcrumbsFor(docId);
     } else {
-        breadcrumbTrail.push({ id: docId, title: docTitle });
+        breadcrumbTrail = [{ id: null, title: 'Home' }];
     }
     renderBreadcrumbs();
+
+    // 2. 화면 초기화
     viewerMainContent.innerHTML = '';
     viewerResults.innerHTML = '<p class="info-text">목록을 불러오는 중...</p>';
+
+    // 3. 현재 문서 내용 표시
     if (docId) {
         try {
             const docSnap = await db.collection("helps").doc(docId).get();
@@ -94,10 +153,13 @@ async function navigateTo(docId, docTitle) {
     } else {
          viewerMainContent.innerHTML = '<h2>Home</h2><p>최상위 문서 목록입니다.</p>';
     }
+
+    // 4. 자식 목록 표시
     try {
         let query = docId === null
             ? db.collection("helps").where("parentIds", "==", [])
             : db.collection("helps").where("parentIds", "array-contains", docId);
+        
         const snapshot = await query.get();
         viewerResults.innerHTML = '';
         if (snapshot.empty) {
@@ -118,6 +180,9 @@ async function navigateTo(docId, docTitle) {
     }
 }
 
+/**
+ * [검색 모드] 키워드 검색 함수
+ */
 async function performSearch() {
     const searchTerm = searchInput.value.trim();
     if (!searchTerm) return;
@@ -138,18 +203,21 @@ async function performSearch() {
                 const highlightedTitle = data.title.replace(regex, `<mark class="highlight">$&</mark>`);
                 const highlightedContents = (data.contents || '').replace(regex, `<mark class="highlight">$&</mark>`);
                 resultItem.innerHTML = `<h3>${highlightedTitle}</h3><p>${highlightedContents}</p><p style="margin-top: 10px; font-size: 12px; color: #7f8c8d;">매칭 키워드: ${searchTerm}</p>`;
-                resultItem.onclick = () => {
-                    breadcrumbTrail = [];
-                    navigateTo(doc.id, data.title);
-                };
+                resultItem.onclick = () => navigateTo(doc.id, data.title);
                 viewerResults.appendChild(resultItem);
             });
         }
     } catch (error) {
         console.error("검색 중 오류 발생:", error);
-        resultsContainer.innerHTML = '<p class="info-text">검색에 실패했습니다.</p>';
+        viewerResults.innerHTML = '<p class="info-text">검색에 실패했습니다.</p>';
     }
 }
+
+// =============================================================
+//
+// 관리자 모드 (Admin Mode) 함수들
+//
+// =============================================================
 
 function prepareNewDocumentForm() {
     currentSelectedDocId = null; 
@@ -217,7 +285,8 @@ async function deleteDocument() {
 function loadDocumentIntoEditor(docId, docData) {
     currentSelectedDocId = docId;
     const parentIds = docData.parentIds || [];
-    editorContent.innerHTML = `<h3>${docData.title || '새 문서 작성'}</h3><div class="form-group"><label>제목</label><input type="text" id="editor-title-input" value="${docData.title || ''}"></div><div class="form-group"><label>내용</label><textarea id="editor-contents-textarea" rows="6">${docData.contents || ''}</textarea></div><div class="form-group"><label>검색 키워드</label><div id="tag-container" class="tag-input-container"><input type="text" id="tag-input" placeholder="키워드 입력 후 Enter"></div></div><div class="form-group"><label>부모 문서</label><div id="parent-display-wrapper"><div id="parent-display"></div><button id="change-parent-btn">변경</button></div></div><div class="button-group"><button id="save-button">저장하기</button><button id="delete-button">삭제하기</button></div>`;
+    editorContent.innerHTML = `<h3>${docData.title || '새 문서 작성'}</h3><div class="form-group"><label>제목</label><input type="text" id="editor-title-input" value="${docData.title || ''}"></div><div class="form-group"><label>내용</label><textarea id="editor-contents-textarea">${docData.contents || ''}</textarea></div><div class="form-group"><label>검색 키워드</label><div id="tag-container" class="tag-input-container"><input type="text" id="tag-input" placeholder="키워드 입력 후 Enter"></div></div><div class="form-group"><label>부모 문서</label><div id="parent-display-wrapper"><div id="parent-display"></div><button id="change-parent-btn">변경</button></div></div><div class="button-group"><button id="save-button">저장하기</button><button id="delete-button">삭제하기</button></div>`;
+    
     const parentDisplay = document.getElementById('parent-display');
     parentDisplay.innerHTML = '';
     if (parentIds.length > 0) {
@@ -234,6 +303,15 @@ function loadDocumentIntoEditor(docId, docData) {
     } else {
         parentDisplay.textContent = '없음';
     }
+
+    const textarea = document.getElementById('editor-contents-textarea');
+    function autoResize() {
+        this.style.height = 'auto';
+        this.style.height = (this.scrollHeight) + 'px';
+    }
+    textarea.addEventListener('input', autoResize, false);
+    setTimeout(() => { if(textarea) autoResize.call(textarea); }, 0);
+
     document.getElementById('save-button').onclick = saveChanges;
     document.getElementById('delete-button').onclick = deleteDocument;
     document.getElementById('change-parent-btn').onclick = () => setupParentSelectorModal(parentIds);
@@ -395,8 +473,7 @@ function filterTree(nodes, filterText) {
             children = filterTree(node.children, filterText);
         }
         if (matches || children.length > 0) {
-            const newNode = { ...node, children: children };
-            filteredNodes.push(newNode);
+            filteredNodes.push({ ...node, children: children });
         }
     }
     return filteredNodes;
@@ -508,11 +585,9 @@ async function createThematicDummies() {
                 parentId = docRef.id;
                 batch.set(docRef, { title: categoryName, contents: `${categoryName}에 대한 모든 문서들을 포함합니다.`, keywords: ["부모", "카테고리", categoryName], parentIds: [] });
             } else {
-                const parentNodeData = parentId ? allDocsMap.get(parentId)?.data : null;
-                const categoryName = parentNodeData ? parentNodeData.title : categories[0];
-                const items = dummyThemes[categoryName] || [];
+                const items = dummyThemes[categories[Math.floor(i / 10) % categories.length]] || [];
                 const itemName = items[i % items.length] || `항목 ${i}`;
-                batch.set(docRef, { title: itemName, contents: `이것은 ${itemName}에 대한 내용입니다.`, keywords: ["자식", "테스트", itemName, categoryName], parentIds: parentId ? [parentId] : [] });
+                batch.set(docRef, { title: itemName, contents: `이것은 ${itemName}에 대한 내용입니다.`, keywords: ["자식", "테스트", itemName, categories[Math.floor(i / 10) % categories.length]], parentIds: parentId ? [parentId] : [] });
             }
         }
         await batch.commit();
