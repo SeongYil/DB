@@ -8,11 +8,10 @@
 </head>
 <body>
     <div class="app-header">
-        <h1>통합 문서 시스템</h1>
+        <h1><a href="#" id="app-title">통합 문서 시스템</a></h1>
         <button id="mode-toggle-btn">관리자 모드</button>
     </div>
 
-    <!-- 뷰어 모드 컨테이너 -->
     <div id="viewer-container">
         <div class="container">
             <div class="search-box">
@@ -28,7 +27,6 @@
         </div>
     </div>
 
-    <!-- 관리자 모드 컨테이너 (기본은 숨김) -->
     <div id="admin-container" style="display: none;">
         <div class="admin-layout">
             <div id="tree-container">
@@ -44,23 +42,10 @@
                 </div>
             </div>
         </div>
-        <div id="test-controls">
-            <h3 id="test-panel-header">
-                🧪 테스트 데이터 관리 <span class="toggle-icon">▼</span>
-            </h3>
-            <div id="test-panel-content" class="collapsed">
-                <div class="test-buttons">
-                    <button id="btn-create-1">더미 1개 생성</button>
-                    <button id="btn-create-100">테마 더미 100개</button>
-                    <button id="btn-delete-all" class="delete-button">⚠️ 전체 삭제</button>
-                </div>
-                <div id="test-log">테스트 로그가 여기에 표시됩니다.</div>
-            </div>
         </div>
-    </div>
 
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
-    <script src="main.js" defer></script>
+    <script src="main.js" defer></script> 
 </body>
 </html>

@@ -5,7 +5,6 @@
 //
 // =============================================================
 
-
 // -------------------------------------------------------------
 // Firebase 설정
 // -------------------------------------------------------------
@@ -26,6 +25,7 @@ const db = firebase.firestore();
 const modeToggleButton = document.getElementById('mode-toggle-btn');
 const viewerContainer = document.getElementById('viewer-container');
 const adminContainer = document.getElementById('admin-container');
+const appTitle = document.getElementById('app-title');
 
 // 뷰어 모드 요소
 const searchInput = document.getElementById('searchInput');
@@ -41,11 +41,6 @@ const resizer = document.getElementById('resizer');
 const treeRoot = document.getElementById('tree-root');
 const editorContent = document.getElementById('editor-content');
 const addNewButton = document.getElementById('add-new-button');
-const testPanelHeader = document.getElementById('test-panel-header');
-const testPanelContent = document.getElementById('test-panel-content');
-const create1Btn = document.getElementById('btn-create-1');
-const create100Btn = document.getElementById('btn-create-100');
-const deleteAllBtn = document.getElementById('btn-delete-all');
 
 // -------------------------------------------------------------
 // 상태 관리 변수
@@ -89,20 +84,22 @@ function renderBreadcrumbs() {
 async function buildBreadcrumbsFor(startDocId) {
     let trail = [];
     let currentId = startDocId;
+    // allDocsMap이 빌드된 상태여야 하므로, 없으면 먼저 빌드
+    if (allDocsMap.size === 0) {
+        const snapshot = await db.collection("helps").get();
+        snapshot.forEach(doc => {
+            allDocsMap.set(doc.id, { id: doc.id, data: doc.data(), children: [] });
+        });
+    }
+
     while (currentId) {
-        let docData;
         if (allDocsMap.has(currentId)) {
-            docData = allDocsMap.get(currentId).data;
+            const docData = allDocsMap.get(currentId).data;
+            trail.unshift({ id: currentId, title: docData.title });
+            currentId = docData.parentIds && docData.parentIds.length > 0 ? docData.parentIds[0] : null;
         } else {
-            const docSnap = await db.collection("helps").doc(currentId).get();
-            if (docSnap.exists) {
-                docData = docSnap.data();
-            } else {
-                break; 
-            }
+            break;
         }
-        trail.unshift({ id: currentId, title: docData.title });
-        currentId = docData.parentIds && docData.parentIds.length > 0 ? docData.parentIds[0] : null;
     }
     trail.unshift({ id: null, title: 'Home' });
     return trail;
@@ -379,7 +376,6 @@ function renderTree(nodes, container, isModal, checkedIds = []) {
         const hasChildren = node.children && node.children.length > 0;
         const itemContainer = document.createElement('div');
         itemContainer.className = 'item-container';
-
         if (hasChildren) {
             const expandedIds = isModal ? [] : getExpandedState();
             const isCollapsed = !expandedIds.includes(node.id);
@@ -409,7 +405,6 @@ function renderTree(nodes, container, isModal, checkedIds = []) {
             emptySpan.style.width = '20px';
             itemContainer.appendChild(emptySpan);
         }
-
         if (isModal) {
             const checkbox = document.createElement('input');
             checkbox.type = 'checkbox';
@@ -420,12 +415,10 @@ function renderTree(nodes, container, isModal, checkedIds = []) {
             if (node.id === currentSelectedDocId) checkbox.disabled = true;
             itemContainer.appendChild(checkbox);
         }
-
         const titleSpan = document.createElement('span');
         titleSpan.className = 'tree-item-title';
         titleSpan.textContent = node.data.title;
         titleSpan.dataset.id = node.id;
-
         if (!isModal) {
             titleSpan.draggable = true;
             titleSpan.addEventListener('dragstart', (e) => { e.stopPropagation(); e.dataTransfer.setData('text/plain', node.id); e.dataTransfer.effectAllowed = 'move'; setTimeout(() => e.target.classList.add('dragging'), 0); });
@@ -440,10 +433,8 @@ function renderTree(nodes, container, isModal, checkedIds = []) {
                 loadDocumentIntoEditor(node.id, node.data);
             };
         }
-        
         itemContainer.appendChild(titleSpan);
         listItem.appendChild(itemContainer);
-
         if (hasChildren) {
             const childrenContainer = document.createElement('ul');
             listItem.appendChild(childrenContainer);
@@ -556,69 +547,6 @@ function handleMouseUp() {
     document.removeEventListener('mouseup', handleMouseUp);
 }
 
-const dummyThemes = { "지상동물": ["사자", "호랑이", "코끼리", "기린", "토끼", "하마", "얼룩말", "원숭이", "캥거루", "판다"], "해산물": ["고등어", "오징어", "새우", "꽃게", "광어", "연어", "참치", "문어", "전복", "가리비"], "식물": ["장미", "소나무", "민들레", "해바라기", "튤립", "선인장", "대나무", "은행나무", "단풍나무", "국화"], "과일": ["사과", "바나나", "딸기", "포도", "오렌지", "수박", "파인애플", "체리", "복숭아", "망고"] };
-const log = (message) => { const logContainer = document.getElementById('test-log'); if (logContainer) logContainer.innerHTML = `> ${message}<br>` + logContainer.innerHTML; };
-async function createSingleDummy() { if (!confirm("랜덤 테마의 더미 문서 1개를 생성하시겠습니까?")) return; log("더미 문서 1개 생성 시작..."); try { const categories = Object.keys(dummyThemes); const randomCategory = categories[Math.floor(Math.random() * categories.length)]; const items = dummyThemes[randomCategory]; const randomItem = items[Math.floor(Math.random() * items.length)]; await db.collection("helps").add({ title: randomItem, contents: `이것은 ${randomCategory} 카테고리의 ${randomItem} 문서입니다.`, keywords: ["더미", "테스트", randomItem, randomCategory], parentIds: [] }); log("✅ 더미 문서 1개 생성 완료!"); buildAndRenderTree(); } catch (e) { log("❌ 생성 실패: " + e.message); console.error(e); } }
-async function createThematicDummies() {
-    const docCount = 100;
-    if (!confirm(`정말로 테마 더미 문서 ${docCount}개를 생성하시겠습니까?`)) return;
-    log(`테마 더미 ${docCount}개 생성 시작...`);
-    try {
-        const batch = db.batch();
-        const categories = Object.keys(dummyThemes);
-        let parentId = null;
-        for (let i = 0; i < docCount; i++) {
-            const docRef = db.collection("helps").doc();
-            if (i % 10 === 0) {
-                const categoryName = categories[Math.floor(i / 10) % categories.length];
-                parentId = docRef.id;
-                batch.set(docRef, { title: categoryName, contents: `${categoryName}에 대한 모든 문서들을 포함합니다.`, keywords: ["부모", "카테고리", categoryName], parentIds: [] });
-            } else {
-                const categoryName = categories[Math.floor(i / 10) % categories.length];
-                const items = dummyThemes[categoryName] || [];
-                const itemName = items[i % items.length] || `항목 ${i}`;
-                batch.set(docRef, { title: itemName, contents: `이것은 ${itemName}에 대한 내용입니다.`, keywords: ["자식", "테스트", itemName, categoryName], parentIds: parentId ? [parentId] : [] });
-            }
-        }
-        await batch.commit();
-        log(`✅ 테마 더미 ${docCount}개 생성 완료!`);
-        buildAndRenderTree();
-    } catch (e) {
-        log("❌ 생성 실패: " + e.message);
-        console.error(e);
-    }
-}
-async function deleteAllDocuments() {
-    if (!confirm("⚠️ 경고! 'helps' 컬렉션의 모든 문서를 영구적으로 삭제합니다. 이 작업은 되돌릴 수 없습니다!")) return;
-    log("전체 문서 삭제 시작...");
-    try {
-        const snapshot = await db.collection("helps").get();
-        if (snapshot.empty) { log("삭제할 문서가 없습니다."); return; }
-        const totalDocs = snapshot.size;
-        log(`총 ${totalDocs}개의 문서를 삭제합니다...`);
-        const batches = [];
-        let currentBatch = db.batch();
-        let currentBatchSize = 0;
-        snapshot.forEach(doc => {
-            currentBatch.delete(doc.ref);
-            currentBatchSize++;
-            if (currentBatchSize === 499) {
-                batches.push(currentBatch);
-                currentBatch = db.batch();
-                currentBatchSize = 0;
-            }
-        });
-        if (currentBatchSize > 0) batches.push(currentBatch);
-        for (const batch of batches) {
-            await batch.commit();
-        }
-        log("✅ 전체 문서 삭제 완료!");
-        buildAndRenderTree();
-    } catch (e) {
-        log("❌ 삭제 실패: " + e.message); console.error(e);
-    }
-}
-
 function toggleMode() {
     const isViewerVisible = viewerContainer.style.display !== 'none';
     if (isViewerVisible) {
@@ -635,13 +563,11 @@ function toggleMode() {
 }
 
 function setupTestPanelToggle() {
-    const header = document.getElementById('test-panel-header');
-    const content = document.getElementById('test-panel-content');
-    const icon = header.querySelector('.toggle-icon');
-    if (!header || !content || !icon) return;
-    header.addEventListener('click', () => {
-        const isCollapsed = content.classList.toggle('collapsed');
-        icon.textContent = isCollapsed ? '▼' : '▲';
+    if (!testPanelHeader) return;
+    const icon = testPanelHeader.querySelector('.toggle-icon');
+    testPanelHeader.addEventListener('click', () => {
+        const isCollapsed = testPanelContent.classList.toggle('collapsed');
+        if(icon) icon.textContent = isCollapsed ? '▼' : '▲';
     });
 }
 
@@ -650,9 +576,13 @@ searchInput.addEventListener('keyup', (event) => {
     if (event.key === 'Enter') performSearch();
 });
 addNewButton.addEventListener('click', prepareNewDocumentForm);
-document.getElementById('btn-create-1').onclick = createSingleDummy;
-document.getElementById('btn-create-100').onclick = createThematicDummies;
-document.getElementById('btn-delete-all').onclick = deleteAllDocuments;
 modeToggleButton.addEventListener('click', toggleMode);
-setupTestPanelToggle();
+appTitle.addEventListener('click', (e) => {
+    e.preventDefault();
+    const isAdminVisible = adminContainer.style.display !== 'none';
+    if (isAdminVisible) {
+        toggleMode();
+    }
+});
+
 navigateTo(null, 'Home');
