@@ -215,34 +215,27 @@ async function buildAndRenderTree(allDocsMap) {
     }
 }
 
-// --- 여기가 수정된 부분이야! ---
-// 고아 노드(orphan node) 처리 로직을 강화하여 더 안정적으로 트리를 생성
 function buildTreeFromMap(allDocsMap) {
-    // 1. 모든 노드의 자식 목록을 초기화
     allDocsMap.forEach(node => {
         if (node) node.children = [];
     });
     
-    const tree = []; // 최상위 노드를 담을 배열
+    const tree = [];
 
-    // 2. 각 노드를 순회하며 부모-자식 관계 설정
     allDocsMap.forEach(node => {
-        if (!node || !node.data) return; // 데이터가 없는 노드는 건너뜀
+        if (!node || !node.data) return; 
 
         const parentIds = node.data.parentIds || [];
 
         if (parentIds.length === 0) {
-            // 부모가 없으면 최상위 노드
             tree.push(node);
             return;
         }
 
-        // 부모 ID가 하나라도 유효한지 체크
         let hasAtLeastOneValidParent = false;
         parentIds.forEach(parentId => {
             const parentNode = allDocsMap.get(parentId);
             if (parentNode) {
-                // 유효한 부모를 찾으면 자식으로 추가하고 플래그 설정
                 parentNode.children.push(node);
                 hasAtLeastOneValidParent = true;
             } else {
@@ -250,13 +243,11 @@ function buildTreeFromMap(allDocsMap) {
             }
         });
 
-        // 유효한 부모가 하나도 없는 경우에만 최상위 노드로 취급 (고아 노드)
         if (!hasAtLeastOneValidParent) {
             tree.push(node);
         }
     });
 
-    // 3. 자식 목록 중복 제거 및 정렬
     allDocsMap.forEach(node => {
         if (node && node.children && node.children.length > 1) {
             node.children = Array.from(new Map(node.children.map(c => [c.id, c])).values());
@@ -269,17 +260,13 @@ function buildTreeFromMap(allDocsMap) {
     return tree;
 }
 
-
-// 순환 참조를 추적하기 위해 ancestorPath 매개변수 추가
 function renderTree(nodes, container, isModal, checkedIds, allDocsMap, ancestorPath) {
     nodes.forEach(node => {
-        // 순환 참조 감지: 현재 노드가 조상 경로에 이미 있으면 더 이상 진행하지 않음
         if (ancestorPath.has(node.id)) {
             console.warn(`순환 참조가 발견되었습니다. ID: ${node.id}, 제목: ${node.data.title}. 이 하위 트리는 렌더링하지 않습니다.`);
-            return; // 현재 노드의 렌더링을 건너뜀
+            return;
         }
         
-        // 현재 노드를 조상 경로에 추가하여 자식 노드로 전달
         const newAncestorPath = new Set(ancestorPath).add(node.id);
 
         const listItem = document.createElement('li');
@@ -349,7 +336,6 @@ function renderTree(nodes, container, isModal, checkedIds, allDocsMap, ancestorP
         if (hasChildren) {
             const childrenContainer = document.createElement('ul');
             listItem.appendChild(childrenContainer);
-            // 재귀 호출 시, 새로운 조상 경로(newAncestorPath)를 전달
             renderTree(node.children, childrenContainer, isModal, checkedIds, allDocsMap, newAncestorPath);
         }
         container.appendChild(listItem);
@@ -363,7 +349,6 @@ async function handleDrop(e, allDocsMap) {
     const newParentId = e.target.dataset.id;
     if (draggedDocId === newParentId) return;
     
-    // 순환 종속성 체크
     let tempId = newParentId;
     while (tempId) {
         if (tempId === draggedDocId) {
@@ -372,14 +357,12 @@ async function handleDrop(e, allDocsMap) {
         }
         const parentNode = allDocsMap.get(tempId);
         if (!parentNode || !parentNode.data.parentIds || parentNode.data.parentIds.length === 0) break;
-        tempId = parentNode.data.parentIds[0]; // 단순화를 위해 첫 번째 부모만 따라감
+        tempId = parentNode.data.parentIds[0];
     }
 
     try {
         const draggedDoc = allDocsMap.get(draggedDocId);
         if (draggedDoc) {
-             // 기존 부모를 유지할지, 완전히 새로운 부모로 바꿀지에 대한 정책 필요
-             // 여기서는 드롭한 대상을 유일한 부모로 설정
             draggedDoc.data.parentIds = [newParentId];
             await firebase.updateDoc(firebase.doc(firebase.db, "helps", draggedDocId), { parentIds: [newParentId] });
             await buildAndRenderTree(allDocsMap);
@@ -394,7 +377,6 @@ function filterTree(nodes, filterText, ancestorPath = new Set()) {
     const filteredNodes = [];
     for (const node of nodes) {
         if (ancestorPath.has(node.id)) {
-            // 필터링 중에도 순환참조 방지
             continue;
         }
         const newAncestorPath = new Set(ancestorPath).add(node.id);
@@ -435,9 +417,6 @@ function setupParentSelectorModal(currentParentIds, allDocsMap) {
     searchInput.addEventListener('input', () => renderModalTree(searchInput.value));
 }
 
-// --- 관리자/공지 관리 (역할 기반으로 수정) ---
-
-// 역할에 따라 관리자 페이지의 버튼 표시 여부를 결정하는 함수
 function updateAdminButtonVisibility(role) {
     const noticeBtn = document.getElementById('edit-global-notice-button');
     const adminBtn = document.getElementById('manage-admins-button');
@@ -447,14 +426,13 @@ function updateAdminButtonVisibility(role) {
     if (role === 'owner') {
         noticeBtn.style.display = 'inline-block';
         adminBtn.style.display = 'inline-block';
-    } else { // 'editor' 또는 다른 경우는 숨김
+    } else { 
         noticeBtn.style.display = 'none';
         adminBtn.style.display = 'none';
     }
 }
 
 async function openAdminManagementUI(currentUserRole) {
-    // Owner만 접근 가능하도록 제한
     if (currentUserRole !== 'owner') {
         ui.showModalAlert('이 기능에 접근할 권한이 없습니다.');
         return;
@@ -535,7 +513,7 @@ async function fetchAuthorizedUsers() {
 async function updateUser(usersData, currentUserRole) {
     try {
         await firebase.setDoc(firebase.doc(firebase.db, 'admins', 'authorized_users'), { users: usersData });
-        await openAdminManagementUI(currentUserRole); // UI 새로고침
+        await openAdminManagementUI(currentUserRole);
     } catch (error) {
         console.error("관리자 정보 업데이트 에러:", error);
         ui.showModalAlert("관리자 정보 업데이트에 실패했습니다.");
@@ -627,9 +605,11 @@ async function saveGlobalNotice() {
     }
 }
 
-// --- 모드 전환 및 리사이저 ---
-function toggleMode(role) { // 이제 role을 인자로 받음
-    if (!role) return; // 역할이 없으면 관리자 모드 진입 불가
+function toggleMode(role) { 
+    if (!role) { // 역할이 없으면(null) 관리자 모드 진입 불가
+        ui.showModalAlert("관리자만 접근할 수 있는 페이지입니다.");
+        return;
+    }
 
     const viewerContainer = document.getElementById('viewer-container');
     const adminContainer = document.getElementById('admin-container');
@@ -641,7 +621,7 @@ function toggleMode(role) { // 이제 role을 인자로 받음
         adminContainer.style.display = 'flex';
         if (toggleBtn) toggleBtn.textContent = '뷰어 모드로';
         
-        updateAdminButtonVisibility(role); // 역할에 따라 버튼 표시여부 결정
+        updateAdminButtonVisibility(role); 
         document.dispatchEvent(new CustomEvent('requestAdminTreeRender'));
     } else {
         document.dispatchEvent(new CustomEvent('requestViewerMode'));
@@ -672,72 +652,6 @@ function handleMouseUp() {
     document.removeEventListener('mouseup', handleMouseUp);
 }
 
-
-async function deleteTestDocuments() {
-    console.log("'테스트' 키워드를 가진 문서 삭제 프로세스를 시작합니다...");
-
-    // 1. '테스트'를 키워드로 가진 모든 문서를 쿼리합니다.
-    const q = firebase.query(firebase.collection(firebase.db, "helps"), firebase.where("keywords", "array-contains", "테스트"));
-    
-    let querySnapshot;
-    try {
-        querySnapshot = await firebase.getDocs(q);
-    } catch (error) {
-        console.error("문서 조회 중 오류 발생:", error);
-        alert("문서를 조회하는 데 실패했습니다. 콘솔을 확인하세요.");
-        return;
-    }
-
-    const docCount = querySnapshot.size;
-    if (docCount === 0) {
-        alert("'테스트' 키워드를 가진 문서가 없습니다.");
-        console.log("'테스트' 키워드를 가진 문서가 없습니다.");
-        return;
-    }
-
-    // 2. 사용자에게 최종 확인을 받습니다.
-    const confirmation = confirm(
-        `정말로 '${docCount}'개의 문서를 영구적으로 삭제하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다!`
-    );
-
-    if (!confirmation) {
-        alert("삭제 작업이 취소되었습니다.");
-        console.log("사용자에 의해 삭제 작업이 취소되었습니다.");
-        return;
-    }
-
-    // 3. Batched Write를 사용하여 효율적으로 문서를 삭제합니다.
-    // Firestore는 한 번의 배치 작업에 최대 500개의 쓰기를 허용합니다.
-    try {
-        let batch = firebase.writeBatch(firebase.db);
-        let deletedCount = 0;
-        
-        querySnapshot.docs.forEach((doc, index) => {
-            batch.delete(doc.ref);
-            if ((index + 1) % 500 === 0) {
-                // 500개 단위로 배치를 실행하고 새 배치를 시작합니다.
-                console.log(`500개 단위 묶음 삭제 실행...`);
-                batch.commit();
-                batch = firebase.writeBatch(firebase.db);
-            }
-            deletedCount++;
-        });
-
-        // 남은 배치 작업을 실행합니다.
-        await batch.commit();
-        console.log(`총 ${deletedCount}개의 문서가 성공적으로 삭제되었습니다.`);
-        alert(`총 ${deletedCount}개의 문서가 성공적으로 삭제되었습니다.`);
-
-        // 4. 삭제된 내용이 화면에 반영되도록 페이지를 새로고침합니다.
-        alert("데이터 동기화를 위해 페이지를 새로고침합니다.");
-        location.reload();
-
-    } catch (error) {
-        console.error("문서 삭제 중 오류 발생:", error);
-        alert("문서 삭제 중 오류가 발생했습니다. 콘솔을 확인하세요.");
-    }
-}
-
 export {
     prepareNewDocumentForm,
     buildAndRenderTree,
@@ -745,5 +659,4 @@ export {
     initResizer,
     loadGlobalNoticeEditor,
     openAdminManagementUI,
-    
 };

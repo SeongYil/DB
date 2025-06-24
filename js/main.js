@@ -23,9 +23,9 @@ const DOMElements = {
     searchInput: document.getElementById('searchInput'),
     searchButton: document.getElementById('searchButton'),
     appTitle: document.getElementById('app-title'),
+    authStatus: document.getElementById('auth-status'),
 };
 
-// 앱 시작 시 모든 문서 정보를 가져와 state에 저장하는 함수
 async function fetchAllDocuments() {
     try {
         const snapshot = await getDocs(collection(db, "helps"));
@@ -62,7 +62,9 @@ function handleGoHome(e) {
 }
 
 async function handleAuthStatusChange(user) {
+    // processUser는 이제 null, 'editor', 또는 'owner'를 반환함
     state.currentUserRole = await processUser(user);
+    console.log("현재 사용자 역할:", state.currentUserRole);
 }
 
 function handleCopyPath(target) {
@@ -83,7 +85,9 @@ function setupEventListeners() {
         if (e.key === 'Enter') performSearch();
     });
     DOMElements.appTitle.addEventListener('click', handleGoHome);
-    document.addEventListener('click', (e) => {
+
+    // 이벤트 위임을 사용하여 동적으로 생성되는 버튼들의 이벤트를 처리
+    document.body.addEventListener('click', (e) => {
         const target = e.target;
         if (target.id === 'login-btn') signInWithGoogle();
         if (target.id === 'logout-btn') handleSignOut();
@@ -93,6 +97,7 @@ function setupEventListeners() {
         if (target.id === 'manage-admins-button') openAdminManagementUI(state.currentUserRole);
         if (target.classList.contains('copy-path-btn')) handleCopyPath(target);
     });
+
     document.addEventListener('navigateToDoc', handleNavigation);
     document.addEventListener('requestAdminTreeRender', handleAdminTreeRender);
     document.addEventListener('requestViewerMode', handleGoHome);
@@ -107,7 +112,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         return;
     }
     
-    // UI를 그리거나 다른 로직을 실행하기 전에, 모든 문서 정보를 먼저 불러와서 기다림
     await fetchAllDocuments();
     
     setupEventListeners();
