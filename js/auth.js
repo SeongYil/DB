@@ -87,4 +87,4 @@ async function processUser(user) {
     return isCurrentUserAdmin;
 }
 
-export { signInWithGoogle, processUser };
+export { signInWithGoogle, processUser , handleSignOut};
