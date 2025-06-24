@@ -3,15 +3,15 @@
 import { auth, onAuthStateChanged, db, collection, getDocs } from './firebase.js';
 import { signInWithGoogle, processUser, handleSignOut } from './auth.js';
 import { navigateTo, performSearch, loadGlobalLeftMargin } from './viewer.js';
-import {
-    buildAndRenderTree,
-    initResizer,
-    openAdminManagementUI,
-    prepareNewDocumentForm,
-    toggleMode,
-    loadGlobalNoticeEditor,
-    initHorizontalResizer
-} from './admin.js';
+import { buildAndRenderTree } from './admin/tree.js';
+import { prepareNewDocumentForm, loadDocumentIntoEditor } from './admin/editor.js';
+import { 
+    initResizer, 
+    initHorizontalResizer, 
+    openAdminManagementUI, 
+    toggleMode, 
+    loadGlobalNoticeEditor 
+} from './admin/ui.js';
 
 const state = {
     allDocsMap: new Map(),
@@ -40,6 +40,19 @@ async function fetchAllDocuments() {
     }
 }
 
+async function handleDocsChange() {
+    await fetchAllDocuments();
+    buildAndRenderTree(state.allDocsMap);
+}
+
+// --- 여기가 수정된 부분입니다 ---
+function handleLoadDocToEditor(event) {
+    // 이벤트 데이터에서 clickedElement를 추출합니다.
+    const { docId, docData, allDocsMap, clickedElement } = event.detail;
+    // loadDocumentIntoEditor 함수에 인자로 전달합니다.
+    loadDocumentIntoEditor(docId, docData, allDocsMap, clickedElement);
+}
+
 function handleNavigation(event) {
     const { id, title } = event.detail;
     navigateTo(state.allDocsMap, id, title);
@@ -55,11 +68,7 @@ function handleGlobalNoticeUpdate() {
 
 function handleGoHome(e) {
     if (e) e.preventDefault();
-    
-    // --- 여기가 수정된 부분입니다 ---
-    // 뷰어 모드로 돌아갈 때 body에서 admin-mode 클래스를 제거합니다.
     document.body.classList.remove('admin-mode');
-
     const toggleBtn = document.getElementById('mode-toggle-btn');
     DOMElements.viewerContainer.style.display = 'flex';
     DOMElements.adminContainer.style.display = 'none';
@@ -106,6 +115,8 @@ function setupEventListeners() {
     document.addEventListener('requestAdminTreeRender', handleAdminTreeRender);
     document.addEventListener('requestViewerMode', handleGoHome);
     document.addEventListener('globalNoticeUpdated', handleGlobalNoticeUpdate);
+    document.addEventListener('docsChanged', handleDocsChange);
+    document.addEventListener('loadDocToEditor', handleLoadDocToEditor);
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
