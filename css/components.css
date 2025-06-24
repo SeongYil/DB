@@ -11,8 +11,8 @@
     transition: background-color 0.2s;
 }
 #auth-status button:hover { background-color: #2980b9; }
-#auth-status #login-btn { background-color: #2ecc71; }
-#auth-status #login-btn:hover { background-color: #27ae60; }
+#auth-status #login-btn { background-color: #3498db; }
+#auth-status #login-btn:hover { background-color: #2980b9; }
 
 .input-with-button button { padding: 10px 20px; background-color: #27ae60; color: white; border: none; border-radius: 5px; cursor: pointer; }
 
