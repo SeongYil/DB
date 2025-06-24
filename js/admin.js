@@ -5,7 +5,7 @@ import * as ui from './ui.js';
 let currentSelectedDocId = null;
 const EXPANDED_STATE_KEY = 'treeExpandedState';
 let isResizing = false;
-let isHorizontalResizing = false; // --- 여기가 추가된 부분이야! ---
+let isHorizontalResizing = false;
 
 // --- DOM 요소 캐싱 ---
 function getDOMElements() {
@@ -14,7 +14,6 @@ function getDOMElements() {
         treeRoot: document.getElementById('tree-root'),
         treeContainer: document.getElementById('tree-container'),
         resizer: document.getElementById('resizer'),
-        // --- 여기가 추가된 부분이야! ---
         horizontalResizer: document.getElementById('horizontal-resizer'),
         treeHeader: document.querySelector('.tree-header')
     };
@@ -620,6 +619,10 @@ function toggleMode(role) {
     const isViewerVisible = viewerContainer.style.display !== 'none';
     
     if (isViewerVisible) {
+        // --- 여기가 수정된 부분입니다 ---
+        // 관리자 모드 진입 시 body에 클래스를 추가하여 페이지 스크롤을 막습니다.
+        document.body.classList.add('admin-mode');
+
         viewerContainer.style.display = 'none';
         adminContainer.style.display = 'flex';
         if (toggleBtn) toggleBtn.textContent = '뷰어 모드로';
@@ -655,7 +658,6 @@ function handleMouseUp() {
     document.removeEventListener('mouseup', handleMouseUp);
 }
 
-// --- 여기가 추가된 부분이야! (가로 리사이저 로직) ---
 function initHorizontalResizer() {
     const { horizontalResizer } = getDOMElements();
     if (horizontalResizer) {
@@ -675,9 +677,8 @@ function handleHorizontalMouseMove(e) {
     const containerRect = treeContainer.getBoundingClientRect();
     let newHeaderHeight = e.clientY - containerRect.top;
 
-    // 최소/최대 높이 제한
-    const minHeight = 45; // .tree-header의 min-height와 맞춤
-    const maxHeight = treeContainer.clientHeight - 80; // tree-root를 위해 최소 80px 남기기
+    const minHeight = 45; 
+    const maxHeight = treeContainer.clientHeight - 80;
 
     if (newHeaderHeight < minHeight) newHeaderHeight = minHeight;
     if (newHeaderHeight > maxHeight) newHeaderHeight = maxHeight;
@@ -698,5 +699,5 @@ export {
     initResizer,
     loadGlobalNoticeEditor,
     openAdminManagementUI,
-    initHorizontalResizer // --- 여기가 추가된 부분이야! ---
+    initHorizontalResizer
 };

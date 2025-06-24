@@ -9,7 +9,8 @@ import {
     openAdminManagementUI,
     prepareNewDocumentForm,
     toggleMode,
-    loadGlobalNoticeEditor
+    loadGlobalNoticeEditor,
+    initHorizontalResizer
 } from './admin.js';
 
 const state = {
@@ -54,6 +55,11 @@ function handleGlobalNoticeUpdate() {
 
 function handleGoHome(e) {
     if (e) e.preventDefault();
+    
+    // --- 여기가 수정된 부분입니다 ---
+    // 뷰어 모드로 돌아갈 때 body에서 admin-mode 클래스를 제거합니다.
+    document.body.classList.remove('admin-mode');
+
     const toggleBtn = document.getElementById('mode-toggle-btn');
     DOMElements.viewerContainer.style.display = 'flex';
     DOMElements.adminContainer.style.display = 'none';
@@ -62,7 +68,6 @@ function handleGoHome(e) {
 }
 
 async function handleAuthStatusChange(user) {
-    // processUser는 이제 null, 'editor', 또는 'owner'를 반환함
     state.currentUserRole = await processUser(user);
     console.log("현재 사용자 역할:", state.currentUserRole);
 }
@@ -86,7 +91,6 @@ function setupEventListeners() {
     });
     DOMElements.appTitle.addEventListener('click', handleGoHome);
 
-    // 이벤트 위임을 사용하여 동적으로 생성되는 버튼들의 이벤트를 처리
     document.body.addEventListener('click', (e) => {
         const target = e.target;
         if (target.id === 'login-btn') signInWithGoogle();
@@ -114,8 +118,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     await fetchAllDocuments();
     
-    setupEventListeners();
     initResizer();
+    initHorizontalResizer();
+
+    setupEventListeners();
     onAuthStateChanged(auth, handleAuthStatusChange);
     handleGoHome();
     loadGlobalLeftMargin();

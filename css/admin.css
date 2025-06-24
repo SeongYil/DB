@@ -24,7 +24,11 @@
 
 #tree-root {
     flex-grow: 1; /* 남은 공간을 모두 차지 */
-    overflow-y: auto; /* 내용이 넘칠 경우 이 영역에만 세로 스크롤바 표시 */
+    
+    /* --- 여기가 수정된 부분입니다 --- */
+    /* auto -> scroll 로 변경하여 스크롤바가 항상 표시되도록 합니다. */
+    overflow-y: scroll; 
+    
     user-select: none;
     min-height: 0; /* flex 아이템이 올바르게 수축하도록 보장 */
 }
@@ -46,7 +50,10 @@
 }
 
 /* Tree View Styles */
-#tree-root>ul { padding-left: 0; }
+#tree-root>ul { 
+    padding-left: 0;
+}
+
 #tree-root ul, #modal-tree-container ul { list-style-type: none; padding-left: 20px; position: relative; }
 #tree-root li, #modal-tree-container li { margin: 2px 0; white-space: nowrap; }
 #modal-tree-container ul { border-left: 1px solid #ddd; }
