@@ -88,19 +88,23 @@ export async function deleteDocument(allDocsMap) {
 }
 
 // --- 여기가 수정된 부분입니다 ---
-// clickedElement 파라미터를 추가로 받습니다.
-export function loadDocumentIntoEditor(docId, docData, allDocsMap, clickedElement) {
+// clickedElement 파라미터를 optional로 변경하고, 없을 때의 로직을 추가합니다.
+export function loadDocumentIntoEditor(docId, docData, allDocsMap, clickedElement = null) {
     currentSelectedDocId = docId;
 
-    // 기존에 활성화된 항목의 하이라이트를 모두 제거합니다.
     const currentActive = document.querySelector('#tree-root .tree-item-title.active');
     if (currentActive) {
         currentActive.classList.remove('active');
     }
 
-    // ID로 검색하는 대신, 전달받은 실제 클릭 요소를 바로 활성화시킵니다.
     if (clickedElement) {
+        // 클릭된 요소가 있으면 그것을 바로 활성화합니다.
         clickedElement.classList.add('active');
+    } else if (docId) {
+        // 클릭된 요소가 없고 docId가 있으면, 해당 ID를 가진 첫 번째 항목을 찾아 활성화합니다.
+        // '수정' 버튼을 통해 진입했을 때 이 로직이 사용됩니다.
+        const newActiveItem = document.querySelector(`#tree-root .tree-item-title[data-id="${docId}"]`);
+        if(newActiveItem) newActiveItem.classList.add('active');
     }
 
     const editorContent = document.getElementById('editor-content');

@@ -1,3 +1,5 @@
+// --- 여기가 수정된 부분입니다 ---
+// '../firebase.js' -> './firebase.js' 로 경로를 수정했습니다.
 import { db, getDocs, getDoc, collection, query, where, doc } from './firebase.js';
 
 let breadcrumbTrail = [];
@@ -17,8 +19,6 @@ function renderBreadcrumbs(allDocsMap) {
     breadcrumbContainer.innerHTML = '';
     if (!breadcrumbTrail || breadcrumbTrail.length === 0) return;
     
-    // 경로가 여러 개일 경우, 가장 짧은 경로를 먼저 보여주거나 혹은 다른 기준으로 정렬할 수 있음
-    // 여기서는 기본 순서대로 모두 표시
     breadcrumbTrail.forEach(path => {
         const pathContainer = document.createElement('div');
         pathContainer.className = 'breadcrumb-path';
@@ -35,11 +35,7 @@ function renderBreadcrumbs(allDocsMap) {
                 element.href = '#';
                 element.onclick = (e) => {
                     e.preventDefault();
-                    if (item.id === null) {
-                        navigateTo(allDocsMap, null, 'Home');
-                    } else {
-                        navigateTo(allDocsMap, item.id, item.title);
-                    }
+                    document.dispatchEvent(new CustomEvent('navigateToDoc', { detail: { id: item.id, title: item.title } }));
                 };
             }
             pathContainer.appendChild(element);
@@ -54,11 +50,7 @@ function renderBreadcrumbs(allDocsMap) {
     });
 }
 
-
-// --- 여기가 수정된 부분이야! ---
-// 순환 참조를 방지하기 위해 ancestorPath 파라미터를 추가
 async function buildAllBreadcrumbPaths(allDocsMap, startDocId, ancestorPath) {
-    // 1. 순환 참조 감지: 현재 탐색하려는 문서 ID가 이미 조상 경로에 있다면, 무한 루프이므로 빈 배열을 반환하고 중단
     if (ancestorPath.has(startDocId)) {
         console.warn(`순환 참조 발견: ID ${startDocId}는 이미 경로에 있습니다. 탐색을 중단합니다.`);
         return [];
@@ -67,22 +59,18 @@ async function buildAllBreadcrumbPaths(allDocsMap, startDocId, ancestorPath) {
     if (!db) return [];
     if (!startDocId || !allDocsMap.has(startDocId)) return [];
 
-    // 2. 현재 문서를 조상 경로에 추가
     const newAncestorPath = new Set(ancestorPath).add(startDocId);
 
     const docNode = allDocsMap.get(startDocId);
     const currentDocInfo = { id: startDocId, title: docNode.data.title };
     const parentIds = docNode.data.parentIds || [];
 
-    // 부모가 없으면, 'Home'부터 시작하는 경로를 반환
     if (parentIds.length === 0) {
         return [[{ id: null, title: 'Home' }, currentDocInfo]];
     }
 
-    // 모든 부모에 대해 재귀적으로 경로를 빌드
     let allPaths = [];
     for (const parentId of parentIds) {
-        // 3. 재귀 호출 시, 업데이트된 조상 경로(newAncestorPath)를 전달
         const parentPaths = await buildAllBreadcrumbPaths(allDocsMap, parentId, newAncestorPath);
         for (const path of parentPaths) {
             allPaths.push([...path, currentDocInfo]);
@@ -91,13 +79,11 @@ async function buildAllBreadcrumbPaths(allDocsMap, startDocId, ancestorPath) {
     return allPaths;
 }
 
-async function navigateTo(allDocsMap, docId, docTitle) {
+export async function navigateTo(allDocsMap, docId, docTitle, currentUserRole) {
     const { viewerMainContent, viewerResults } = getDOMElements();
     if (!db) return;
 
     if (docId) {
-        // --- 여기가 수정된 부분이야! ---
-        // buildAllBreadcrumbPaths를 처음 호출할 때, 빈 Set을 만들어 초기 조상 경로로 전달
         breadcrumbTrail = await buildAllBreadcrumbPaths(allDocsMap, docId, new Set());
     } else {
         breadcrumbTrail = [[{ id: null, title: 'Home' }]];
@@ -111,8 +97,43 @@ async function navigateTo(allDocsMap, docId, docTitle) {
         const docSnap = await getDoc(doc(db, "helps", docId));
         if (docSnap.exists()) {
             const data = docSnap.data();
-            let keywordsHtml = data.keywords?.length > 0 ? `<div class="keyword-tag-container"><h4>관련 키워드</h4>${data.keywords.map(kw => `<span class="keyword-tag">${kw}</span>`).join('')}</div>` : '';
-            viewerMainContent.innerHTML = `<h2>${data.title}</h2><div>${data.contents || '내용이 없습니다.'}</div>${keywordsHtml}`;
+            
+            const titleContainer = document.createElement('div');
+            titleContainer.style.display = 'flex';
+            titleContainer.style.justifyContent = 'space-between';
+            titleContainer.style.alignItems = 'center';
+
+            const titleHeader = document.createElement('h2');
+            titleHeader.textContent = data.title;
+            titleContainer.appendChild(titleHeader);
+
+            if (currentUserRole) {
+                const editButton = document.createElement('button');
+                editButton.id = 'edit-from-viewer-btn';
+                editButton.className = 'inline-btn';
+                editButton.textContent = '수정하기';
+                editButton.style.padding = '8px 15px';
+                editButton.onclick = () => {
+                    document.dispatchEvent(new CustomEvent('requestEditDoc', { detail: { docId } }));
+                };
+                titleContainer.appendChild(editButton);
+            }
+
+            // --- 여기가 수정된 부분입니다 ---
+            // innerHTML += 대신, DOM 요소를 만들어 추가하는 방식으로 변경하여 버튼이 사라지는 버그를 수정합니다.
+            const contentDiv = document.createElement('div');
+            contentDiv.innerHTML = data.contents || '내용이 없습니다.';
+            
+            viewerMainContent.appendChild(titleContainer);
+            viewerMainContent.appendChild(contentDiv);
+
+            if (data.keywords?.length > 0) {
+                const keywordsDiv = document.createElement('div');
+                keywordsDiv.className = 'keyword-tag-container';
+                keywordsDiv.innerHTML = `<h4>관련 키워드</h4>${data.keywords.map(kw => `<span class="keyword-tag">${kw}</span>`).join('')}`;
+                viewerMainContent.appendChild(keywordsDiv);
+            }
+            
         } else {
             viewerMainContent.innerHTML = '<h4>문서가 존재하지 않습니다.</h4>';
         }
@@ -131,13 +152,13 @@ async function navigateTo(allDocsMap, docId, docTitle) {
             const resultItem = document.createElement('div');
             resultItem.className = 'result-item';
             resultItem.innerHTML = `<h3>${child.data.title}</h3>`;
-            resultItem.onclick = () => navigateTo(allDocsMap, child.id, child.data.title);
+            resultItem.onclick = () => navigateTo(allDocsMap, child.id, child.data.title, currentUserRole);
             viewerResults.appendChild(resultItem);
         });
     }
 }
 
-async function performSearch() {
+export async function performSearch() {
     const { searchInput, viewerMainContent, viewerResults, breadcrumbContainer } = getDOMElements();
     if (!db) return;
     const searchTerm = searchInput.value.trim();
@@ -173,16 +194,14 @@ async function performSearch() {
     });
 }
 
-async function loadGlobalLeftMargin() {
+export async function loadGlobalLeftMargin() {
     const { leftMarginContainer } = getDOMElements();
     if (!db) return;
     try {
         const docSnap = await getDoc(doc(db, "globals", "left_margin"));
-        leftMarginContainer.textContent = docSnap.exists() ? docSnap.data().content || '' : '안내문이 없습니다.';
+        leftMarginContainer.textContent = docSnap.exists() ? docSnap.data().content : '안내문이 없습니다.';
     } catch (error) {
         console.error("안내문 로딩 오류:", error);
         leftMarginContainer.textContent = '안내문을 불러오는 데 실패했습니다.';
     }
 }
-
-export { navigateTo, performSearch, loadGlobalLeftMargin };
