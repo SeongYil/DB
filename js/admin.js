@@ -673,11 +673,77 @@ function handleMouseUp() {
 }
 
 
+async function deleteTestDocuments() {
+    console.log("'테스트' 키워드를 가진 문서 삭제 프로세스를 시작합니다...");
+
+    // 1. '테스트'를 키워드로 가진 모든 문서를 쿼리합니다.
+    const q = firebase.query(firebase.collection(firebase.db, "helps"), firebase.where("keywords", "array-contains", "테스트"));
+    
+    let querySnapshot;
+    try {
+        querySnapshot = await firebase.getDocs(q);
+    } catch (error) {
+        console.error("문서 조회 중 오류 발생:", error);
+        alert("문서를 조회하는 데 실패했습니다. 콘솔을 확인하세요.");
+        return;
+    }
+
+    const docCount = querySnapshot.size;
+    if (docCount === 0) {
+        alert("'테스트' 키워드를 가진 문서가 없습니다.");
+        console.log("'테스트' 키워드를 가진 문서가 없습니다.");
+        return;
+    }
+
+    // 2. 사용자에게 최종 확인을 받습니다.
+    const confirmation = confirm(
+        `정말로 '${docCount}'개의 문서를 영구적으로 삭제하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다!`
+    );
+
+    if (!confirmation) {
+        alert("삭제 작업이 취소되었습니다.");
+        console.log("사용자에 의해 삭제 작업이 취소되었습니다.");
+        return;
+    }
+
+    // 3. Batched Write를 사용하여 효율적으로 문서를 삭제합니다.
+    // Firestore는 한 번의 배치 작업에 최대 500개의 쓰기를 허용합니다.
+    try {
+        let batch = firebase.writeBatch(firebase.db);
+        let deletedCount = 0;
+        
+        querySnapshot.docs.forEach((doc, index) => {
+            batch.delete(doc.ref);
+            if ((index + 1) % 500 === 0) {
+                // 500개 단위로 배치를 실행하고 새 배치를 시작합니다.
+                console.log(`500개 단위 묶음 삭제 실행...`);
+                batch.commit();
+                batch = firebase.writeBatch(firebase.db);
+            }
+            deletedCount++;
+        });
+
+        // 남은 배치 작업을 실행합니다.
+        await batch.commit();
+        console.log(`총 ${deletedCount}개의 문서가 성공적으로 삭제되었습니다.`);
+        alert(`총 ${deletedCount}개의 문서가 성공적으로 삭제되었습니다.`);
+
+        // 4. 삭제된 내용이 화면에 반영되도록 페이지를 새로고침합니다.
+        alert("데이터 동기화를 위해 페이지를 새로고침합니다.");
+        location.reload();
+
+    } catch (error) {
+        console.error("문서 삭제 중 오류 발생:", error);
+        alert("문서 삭제 중 오류가 발생했습니다. 콘솔을 확인하세요.");
+    }
+}
+
 export {
     prepareNewDocumentForm,
     buildAndRenderTree,
     toggleMode,
     initResizer,
     loadGlobalNoticeEditor,
-    openAdminManagementUI
+    openAdminManagementUI,
+    
 };
