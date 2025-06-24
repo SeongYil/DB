@@ -12,13 +12,13 @@ function getDOMElements() {
     };
 }
 
-// --- 여기가 수정된 부분이야! ---
-// renderBreadcrumbs 함수가 allDocsMap을 인자로 받도록 수정
 function renderBreadcrumbs(allDocsMap) {
     const { breadcrumbContainer } = getDOMElements();
     breadcrumbContainer.innerHTML = '';
     if (!breadcrumbTrail || breadcrumbTrail.length === 0) return;
     
+    // 경로가 여러 개일 경우, 가장 짧은 경로를 먼저 보여주거나 혹은 다른 기준으로 정렬할 수 있음
+    // 여기서는 기본 순서대로 모두 표시
     breadcrumbTrail.forEach(path => {
         const pathContainer = document.createElement('div');
         pathContainer.className = 'breadcrumb-path';
@@ -33,11 +33,8 @@ function renderBreadcrumbs(allDocsMap) {
                 element.className = 'breadcrumb-item';
                 element.textContent = item.title;
                 element.href = '#';
-                // --- 여기가 수정된 부분이야! ---
-                // navigateTo 호출 시 allDocsMap을 전달하도록 수정
                 element.onclick = (e) => {
                     e.preventDefault();
-                    // 'Home' 링크(id가 null)를 클릭했을 때도 올바르게 동작하도록 수정
                     if (item.id === null) {
                         navigateTo(allDocsMap, null, 'Home');
                     } else {
@@ -58,21 +55,35 @@ function renderBreadcrumbs(allDocsMap) {
 }
 
 
-async function buildAllBreadcrumbPaths(allDocsMap, startDocId) {
+// --- 여기가 수정된 부분이야! ---
+// 순환 참조를 방지하기 위해 ancestorPath 파라미터를 추가
+async function buildAllBreadcrumbPaths(allDocsMap, startDocId, ancestorPath) {
+    // 1. 순환 참조 감지: 현재 탐색하려는 문서 ID가 이미 조상 경로에 있다면, 무한 루프이므로 빈 배열을 반환하고 중단
+    if (ancestorPath.has(startDocId)) {
+        console.warn(`순환 참조 발견: ID ${startDocId}는 이미 경로에 있습니다. 탐색을 중단합니다.`);
+        return [];
+    }
+    
     if (!db) return [];
     if (!startDocId || !allDocsMap.has(startDocId)) return [];
+
+    // 2. 현재 문서를 조상 경로에 추가
+    const newAncestorPath = new Set(ancestorPath).add(startDocId);
 
     const docNode = allDocsMap.get(startDocId);
     const currentDocInfo = { id: startDocId, title: docNode.data.title };
     const parentIds = docNode.data.parentIds || [];
 
+    // 부모가 없으면, 'Home'부터 시작하는 경로를 반환
     if (parentIds.length === 0) {
         return [[{ id: null, title: 'Home' }, currentDocInfo]];
     }
 
+    // 모든 부모에 대해 재귀적으로 경로를 빌드
     let allPaths = [];
     for (const parentId of parentIds) {
-        const parentPaths = await buildAllBreadcrumbPaths(allDocsMap, parentId);
+        // 3. 재귀 호출 시, 업데이트된 조상 경로(newAncestorPath)를 전달
+        const parentPaths = await buildAllBreadcrumbPaths(allDocsMap, parentId, newAncestorPath);
         for (const path of parentPaths) {
             allPaths.push([...path, currentDocInfo]);
         }
@@ -85,12 +96,12 @@ async function navigateTo(allDocsMap, docId, docTitle) {
     if (!db) return;
 
     if (docId) {
-        breadcrumbTrail = await buildAllBreadcrumbPaths(allDocsMap, docId);
+        // --- 여기가 수정된 부분이야! ---
+        // buildAllBreadcrumbPaths를 처음 호출할 때, 빈 Set을 만들어 초기 조상 경로로 전달
+        breadcrumbTrail = await buildAllBreadcrumbPaths(allDocsMap, docId, new Set());
     } else {
         breadcrumbTrail = [[{ id: null, title: 'Home' }]];
     }
-    // --- 여기가 수정된 부분이야! ---
-    // renderBreadcrumbs 함수에 allDocsMap을 전달
     renderBreadcrumbs(allDocsMap);
 
     viewerMainContent.innerHTML = '';
