@@ -1,0 +1,113 @@
+/* --- 전체 레이아웃 --- */
+#viewer-container {
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+}
+
+.viewer-layout {
+    display: flex;
+    justify-content: center;
+    padding: 0 40px;
+    gap: 30px;
+    flex-grow: 1;
+}
+
+#admin-container {
+    display: none;
+    flex-direction: column;
+    flex-grow: 1;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+.admin-layout {
+    display: flex;
+    gap: 0;
+    flex-grow: 1;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    overflow: hidden;
+    margin-top: 20px;
+}
+
+/* --- 헤더 --- */
+.app-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 40px;
+    background-color: #34495e;
+    color: white;
+    user-select: none;
+    flex-shrink: 0;
+}
+
+.app-header h1 {
+    margin: 0;
+    font-size: 24px;
+}
+
+#app-title {
+    color: white;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.user-display {
+    display: flex;
+    align-items: center;
+}
+
+.user-email {
+    font-weight: bold;
+    margin-right: 15px;
+}
+
+/* --- 사이드 여백 --- */
+.side-margin {
+    flex: 1 1 260px;
+    max-width: 1000px;
+    font-size: 14px;
+    color: #555;
+    padding-top: 30px;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+/* --- 반응형 레이아웃 --- */
+@media (max-width: 1400px) {
+    .side-margin {
+        display: none;
+    }
+    .viewer-layout {
+        padding: 0 20px;
+    }
+}
+
+@media (max-width: 768px) {
+    .app-header {
+        flex-direction: column;
+        gap: 10px;
+        padding: 10px 20px;
+    }
+    #admin-container {
+        padding: 10px;
+    }
+    .admin-layout {
+        flex-direction: column;
+        height: auto;
+        max-height: calc(100vh - 200px);
+    }
+    #tree-container {
+        width: 100%;
+        height: 40vh;
+        min-height: 200px;
+    }
+    #resizer {
+        display: none;
+    }
+    #editor-container {
+        flex-grow: 1;
+    }
+}

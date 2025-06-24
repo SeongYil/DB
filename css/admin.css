@@ -1,0 +1,68 @@
+#tree-container {
+    width: 30%;
+    min-width: 250px;
+    background-color: #ffffff;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+}
+
+.tree-header {
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+    margin-bottom: 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #ecf0f1;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+#tree-root {
+    flex-grow: 1;
+    overflow: auto;
+    user-select: none;
+}
+
+#resizer {
+    flex-shrink: 0;
+    width: 10px;
+    background-color: #ecf0f1;
+    cursor: col-resize;
+    user-select: none;
+}
+
+#editor-container {
+    flex-grow: 1;
+    background-color: #ffffff;
+    padding: 20px;
+    overflow-y: auto;
+    box-sizing: border-box;
+}
+
+/* Tree View Styles */
+#tree-root>ul { padding-left: 0; }
+#tree-root ul, #modal-tree-container ul { list-style-type: none; padding-left: 20px; position: relative; }
+#tree-root li, #modal-tree-container li { margin: 2px 0; white-space: nowrap; }
+#modal-tree-container ul { border-left: 1px solid #ddd; }
+#modal-tree-container li { display: flex; flex-direction: column; }
+#modal-tree-container li::before { content: ''; position: absolute; top: 15px; left: -20px; border-bottom: 1px solid #ddd; width: 15px; height: 0; }
+.item-container { display: flex; align-items: center; }
+.toggle-btn { cursor: pointer; font-weight: bold; font-size: 16px; margin-right: 4px; display: inline-block; width: 20px; text-align: center; color: #7f8c8d; }
+.modal-checkbox { cursor: pointer; margin-right: 4px; width: 20px; accent-color: #3498db; }
+.tree-item-title { padding: 5px 8px; border-radius: 5px; cursor: pointer; transition: background-color 0.2s, opacity 0.2s; display: inline-block; }
+.tree-item-title:hover { background-color: #f0f0f0; }
+#tree-root .tree-item-title.active { background-color: #e0eaf1; font-weight: bold; }
+#modal-tree-container .tree-item-title { cursor: default; }
+li.collapsed>ul { display: none; }
+.tree-item-title.dragging { opacity: 0.4; }
+.tree-item-title.drop-target { background-color: #a2d9ce; border: 2px dashed #1abc9c; }
+
+/* Admin Management Box */
+.admin-management-box { background-color: white; padding: 20px; border-radius: 8px; }
+.input-with-button { display: flex; gap: 10px; }
+.input-with-button input { flex-grow: 1; }
+#admin-email-list { list-style-type: none; padding: 0; margin-top: 10px; max-height: 200px; overflow-y: auto; }
+#admin-email-list li { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid #ecf0f1; }
+#admin-email-list li:last-child { border-bottom: none; }
