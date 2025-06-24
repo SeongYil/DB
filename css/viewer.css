@@ -18,6 +18,10 @@
 .search-box {
     display: flex;
     margin: 20px 0;
+    /* --- 여기가 추가된 부분이야! --- */
+    /* 화면이 좁아지면 자식 요소들이 다음 줄로 넘어가도록 설정 */
+    flex-wrap: wrap;
+    gap: 10px; /* 줄바꿈 시 간격 추가 */
 }
 
 #searchInput {
@@ -28,6 +32,8 @@
     border-radius: 5px 0 0 5px;
     outline: none;
     transition: border-color 0.3s;
+    /* --- 여기가 추가된 부분이야! --- */
+    min-width: 150px; /* input이 너무 작아지는 것을 방지 */
 }
 #searchInput:focus { border-color: #3498db; }
 
@@ -43,6 +49,9 @@
     transition: background-color 0.3s;
 }
 #searchButton:hover { background-color: #2980b9; }
+
+
+/* --- 아래부터는 기존 코드와 동일 --- */
 
 #mainContentContainer div, .result-item div {
     white-space: pre-wrap;
@@ -90,3 +99,22 @@
 
 .search-category-header { margin-top: 25px; margin-bottom: 15px; font-size: 1.1em; font-weight: bold; color: #2c3e50; border-bottom: 2px solid #ecf0f1; padding-bottom: 8px; }
 .search-result-separator { margin: 40px 0; border: 0; height: 1px; background-image: linear-gradient(to right, rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.25), rgba(0, 0, 0, 0)); }
+
+
+/* --- 여기가 추가된 부분이야! --- */
+/* 화면이 768px보다 작아질 때 검색창의 모양을 바꿈 */
+@media (max-width: 768px) {
+    .search-box {
+        flex-direction: column; /* 세로로 쌓이도록 방향 변경 */
+    }
+
+    #searchInput, #searchButton {
+        width: 100%; /* 너비를 100%로 설정 */
+        border-radius: 5px; /* 모든 모서리를 둥글게 */
+        box-sizing: border-box; /* 패딩과 테두리를 너비에 포함 */
+    }
+
+    #searchButton {
+        margin-top: 10px; /* 버튼 위에 간격 추가 */
+    }
+}
