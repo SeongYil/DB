@@ -21,19 +21,21 @@
     flex-grow: 1;
     padding: 20px;
     box-sizing: border-box;
+    /* --- 핵심 수정 1 --- */
+    /* 자식 요소(.admin-layout)가 넘치더라도 컨테이너 자체는 스크롤되지 않도록 설정 */
+    overflow: hidden;
 }
 
-/* --- 여기가 수정된 부분이야! --- */
-/* .admin-layout의 높이를 부모인 #admin-container에 꽉 채우도록 변경 */
+/* --- 핵심 수정 2 --- */
+/* .admin-layout의 높이 제어 방식을 flex-grow로 변경하여 더 안정적으로 공간을 채우도록 함 */
 .admin-layout {
     display: flex;
     gap: 0;
-    /* flex-grow: 1; 이 속성을 height로 대체하여 높이를 명시적으로 제어 */
-    height: 100%; /* 부모 높이의 100%를 차지하도록 설정 */
+    flex-grow: 1; /* height: 100% 대신 flex-grow를 사용해서 높이를 고정 */
     border: 1px solid #ddd;
     border-radius: 8px;
     overflow: hidden;
-    /* margin-top: 20px; 이 여백은 더이상 필요 없으므로 제거 */
+    min-height: 0; /* flex 아이템이 부모를 넘어가지 않도록 보장하는 중요한 속성 */
 }
 
 /* --- 헤더 --- */

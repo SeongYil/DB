@@ -5,6 +5,7 @@ import * as ui from './ui.js';
 let currentSelectedDocId = null;
 const EXPANDED_STATE_KEY = 'treeExpandedState';
 let isResizing = false;
+let isHorizontalResizing = false; // --- 여기가 추가된 부분이야! ---
 
 // --- DOM 요소 캐싱 ---
 function getDOMElements() {
@@ -13,6 +14,9 @@ function getDOMElements() {
         treeRoot: document.getElementById('tree-root'),
         treeContainer: document.getElementById('tree-container'),
         resizer: document.getElementById('resizer'),
+        // --- 여기가 추가된 부분이야! ---
+        horizontalResizer: document.getElementById('horizontal-resizer'),
+        treeHeader: document.querySelector('.tree-header')
     };
 }
 
@@ -68,7 +72,6 @@ async function saveChanges(allDocsMap) {
             const docRef = await firebase.addDoc(firebase.collection(firebase.db, "helps"), docData);
             currentSelectedDocId = docRef.id;
         }
-        // 저장 후에는 전체 문서를 다시 불러와서 state를 최신화하고 트리를 다시 그림
         const snapshot = await firebase.getDocs(firebase.collection(firebase.db, "helps"));
         allDocsMap.clear();
         snapshot.forEach(doc => allDocsMap.set(doc.id, { id: doc.id, data: doc.data(), children: [] }));
@@ -100,7 +103,6 @@ async function deleteDocument(allDocsMap) {
                 await firebase.deleteDoc(firebase.doc(firebase.db, "helps", currentSelectedDocId));
                 getDOMElements().editorContent.innerHTML = '<p class="info-text">왼쪽 트리에서 항목을 선택하거나, 새 문서를 추가하세요.</p>';
                 
-                // 문서 삭제 후 allDocsMap에서도 해당 항목을 제거
                 allDocsMap.delete(currentSelectedDocId);
                 currentSelectedDocId = null;
 
@@ -605,8 +607,9 @@ async function saveGlobalNotice() {
     }
 }
 
+// --- 모드 전환 및 리사이저 ---
 function toggleMode(role) { 
-    if (!role) { // 역할이 없으면(null) 관리자 모드 진입 불가
+    if (!role) { 
         ui.showModalAlert("관리자만 접근할 수 있는 페이지입니다.");
         return;
     }
@@ -652,6 +655,42 @@ function handleMouseUp() {
     document.removeEventListener('mouseup', handleMouseUp);
 }
 
+// --- 여기가 추가된 부분이야! (가로 리사이저 로직) ---
+function initHorizontalResizer() {
+    const { horizontalResizer } = getDOMElements();
+    if (horizontalResizer) {
+        horizontalResizer.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            isHorizontalResizing = true;
+            document.addEventListener('mousemove', handleHorizontalMouseMove);
+            document.addEventListener('mouseup', handleHorizontalMouseUp);
+        });
+    }
+}
+function handleHorizontalMouseMove(e) {
+    if (!isHorizontalResizing) return;
+    const { treeHeader, treeContainer } = getDOMElements();
+    if (!treeHeader || !treeContainer) return;
+
+    const containerRect = treeContainer.getBoundingClientRect();
+    let newHeaderHeight = e.clientY - containerRect.top;
+
+    // 최소/최대 높이 제한
+    const minHeight = 45; // .tree-header의 min-height와 맞춤
+    const maxHeight = treeContainer.clientHeight - 80; // tree-root를 위해 최소 80px 남기기
+
+    if (newHeaderHeight < minHeight) newHeaderHeight = minHeight;
+    if (newHeaderHeight > maxHeight) newHeaderHeight = maxHeight;
+    
+    treeHeader.style.height = `${newHeaderHeight}px`;
+}
+function handleHorizontalMouseUp() {
+    isHorizontalResizing = false;
+    document.removeEventListener('mousemove', handleHorizontalMouseMove);
+    document.removeEventListener('mouseup', handleHorizontalMouseUp);
+}
+
+
 export {
     prepareNewDocumentForm,
     buildAndRenderTree,
@@ -659,4 +698,5 @@ export {
     initResizer,
     loadGlobalNoticeEditor,
     openAdminManagementUI,
+    initHorizontalResizer // --- 여기가 추가된 부분이야! ---
 };
