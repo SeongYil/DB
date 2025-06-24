@@ -86,6 +86,7 @@ export function buildTreeFromMap(allDocsMap) {
     return tree;
 }
 
+// --- 여기가 수정된 부분입니다 ---
 export function renderTree(nodes, container, isModal, checkedIds, allDocsMap, ancestorPath, contextualParentId = null) {
     const currentSelectedDocId = document.querySelector('#tree-root .tree-item-title.active')?.dataset.id;
 
@@ -96,11 +97,28 @@ export function renderTree(nodes, container, isModal, checkedIds, allDocsMap, an
         }
         
         const newAncestorPath = new Set(ancestorPath).add(node.id);
-
         const listItem = document.createElement('li');
-        const hasChildren = node.children && node.children.length > 0;
         const itemContainer = document.createElement('div');
         itemContainer.className = 'item-container';
+        
+        const hasChildren = node.children && node.children.length > 0;
+        const hasParents = node.data.parentIds && node.data.parentIds.length > 0;
+
+        // 아이콘을 담을 span 요소를 생성합니다.
+        const iconSpan = document.createElement('span');
+        iconSpan.className = 'tree-item-icon';
+
+        // 계층에 따라 li 요소에 클래스를 부여하고, 아이콘을 설정합니다.
+        if (!hasParents) {
+            listItem.classList.add('tree-item-top');
+            iconSpan.textContent = '🗂️';
+        } else if (hasParents && hasChildren) {
+            listItem.classList.add('tree-item-intermediate');
+            iconSpan.textContent = '📁';
+        } else if (hasParents && !hasChildren) {
+            listItem.classList.add('tree-item-leaf');
+            iconSpan.textContent = '📄';
+        }
 
         if (hasChildren) {
             const expandedIds = isModal ? [] : getExpandedState();
@@ -125,9 +143,13 @@ export function renderTree(nodes, container, isModal, checkedIds, allDocsMap, an
         } else {
             const emptySpan = document.createElement('span');
             emptySpan.style.display = 'inline-block';
-            emptySpan.style.width = '20px';
+            emptySpan.style.width = '20px'; // toggle-btn과 너비를 맞춤
             itemContainer.appendChild(emptySpan);
         }
+
+        // 아이콘을 토글 버튼 뒤에 추가합니다.
+        itemContainer.appendChild(iconSpan);
+
         if (isModal) {
             const checkbox = document.createElement('input');
             checkbox.type = 'checkbox';
@@ -138,6 +160,7 @@ export function renderTree(nodes, container, isModal, checkedIds, allDocsMap, an
             if (node.id === currentSelectedDocId) checkbox.disabled = true;
             itemContainer.appendChild(checkbox);
         }
+
         const titleSpan = document.createElement('span');
         titleSpan.className = 'tree-item-title';
         titleSpan.textContent = node.data.title;
@@ -164,23 +187,22 @@ export function renderTree(nodes, container, isModal, checkedIds, allDocsMap, an
             titleSpan.addEventListener('dragleave', (e) => e.target.classList.remove('drop-target'));
             titleSpan.addEventListener('drop', (e) => handleDrop(e, allDocsMap));
             
-            // --- 여기가 수정된 부분입니다 ---
-            // 이벤트 핸들러에서 event 객체(e)를 사용합니다.
             titleSpan.onclick = (e) => {
                 const event = new CustomEvent('loadDocToEditor', {
                     detail: {
                         docId: node.id,
                         docData: node.data,
                         allDocsMap: allDocsMap,
-                        // 클릭된 요소 자체를 이벤트 정보에 추가합니다.
                         clickedElement: e.currentTarget 
                     }
                 });
                 document.dispatchEvent(event);
             };
         }
+
         itemContainer.appendChild(titleSpan);
         listItem.appendChild(itemContainer);
+
         if (hasChildren) {
             const childrenContainer = document.createElement('ul');
             listItem.appendChild(childrenContainer);
@@ -189,6 +211,7 @@ export function renderTree(nodes, container, isModal, checkedIds, allDocsMap, an
         container.appendChild(listItem);
     });
 }
+// --- 수정 끝 ---
 
 async function handleDrop(e, allDocsMap) {
     e.preventDefault();

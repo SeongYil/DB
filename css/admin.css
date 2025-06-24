@@ -19,18 +19,14 @@
     border-bottom: 1px solid #ecf0f1;
     flex-wrap: wrap;
     gap: 10px;
-    flex-shrink: 0; /* 헤더 크기가 줄어들지 않도록 고정 */
+    flex-shrink: 0; 
 }
 
 #tree-root {
-    flex-grow: 1; /* 남은 공간을 모두 차지 */
-    
-    /* --- 여기가 수정된 부분입니다 --- */
-    /* auto -> scroll 로 변경하여 스크롤바가 항상 표시되도록 합니다. */
+    flex-grow: 1; 
     overflow-y: scroll; 
-    
     user-select: none;
-    min-height: 0; /* flex 아이템이 올바르게 수축하도록 보장 */
+    min-height: 0; 
 }
 
 #resizer {
@@ -45,15 +41,12 @@
     flex-grow: 1;
     background-color: #ffffff;
     padding: 20px;
-    overflow-y: auto; /* 오른쪽 편집 영역도 내용이 길어지면 자체 스크롤바 생성 */
+    overflow-y: auto; 
     box-sizing: border-box;
 }
 
 /* Tree View Styles */
-#tree-root>ul { 
-    padding-left: 0;
-}
-
+#tree-root>ul { padding-left: 0; }
 #tree-root ul, #modal-tree-container ul { list-style-type: none; padding-left: 20px; position: relative; }
 #tree-root li, #modal-tree-container li { margin: 2px 0; white-space: nowrap; }
 #modal-tree-container ul { border-left: 1px solid #ddd; }
@@ -62,13 +55,49 @@
 .item-container { display: flex; align-items: center; }
 .toggle-btn { cursor: pointer; font-weight: bold; font-size: 16px; margin-right: 4px; display: inline-block; width: 20px; text-align: center; color: #7f8c8d; }
 .modal-checkbox { cursor: pointer; margin-right: 4px; width: 20px; accent-color: #3498db; }
-.tree-item-title { padding: 5px 8px; border-radius: 5px; cursor: pointer; transition: background-color 0.2s, opacity 0.2s; display: inline-block; }
-.tree-item-title:hover { background-color: #f0f0f0; }
-#tree-root .tree-item-title.active { background-color: #e0eaf1; font-weight: bold; }
+.tree-item-title { padding: 5px 8px; border-radius: 5px; cursor: pointer; transition: background-color 0.2s, color 0.2s; display: inline-block; }
+.tree-item-title:hover { background-color: #e9ecef; }
+#tree-root .tree-item-title.active { background-color: #d4e4f1; font-weight: bold; }
 #modal-tree-container .tree-item-title { cursor: default; }
 li.collapsed>ul { display: none; }
 .tree-item-title.dragging { opacity: 0.4; }
 .tree-item-title.drop-target { background-color: #a2d9ce; border: 2px dashed #1abc9c; }
+
+
+/* --- 여기가 수정된 부분입니다 --- */
+/* 이전 배경색 스타일은 제거하고 아이콘과 타이포그래피 스타일을 추가합니다. */
+
+/* 1. 아이콘 스타일 */
+.tree-item-icon {
+    display: inline-block;
+    width: 22px; /* 아이콘이 차지할 공간 */
+    text-align: center;
+    margin-right: 2px;
+    font-size: 14px;
+}
+
+/* 2. 계층별 타이포그래피 스타일 */
+.tree-item-top > .item-container > .tree-item-title {
+    font-weight: 600; /* 굵게 */
+    color: #2c3e50;
+}
+.tree-item-intermediate > .item-container > .tree-item-title {
+    font-weight: 400; /* 보통 */
+}
+.tree-item-leaf > .item-container > .tree-item-title {
+    font-weight: 400; /* 보통 */
+    color: #566573; /* 약간 흐린 색 */
+}
+
+/* 3. 선택(active)되었을 때 스타일은 모든 계층에 동일하게 적용 */
+#tree-root .tree-item-title.active,
+#tree-root .tree-item-title.active:hover {
+    background-color: #d4eaf7; /* 활성 배경색 */
+    color: #1a5276; /* 활성 글자색 */
+    font-weight: 600; /* 활성 시 항상 굵게 */
+}
+/* --- 수정 끝 --- */
+
 
 /* Admin Management Box */
 .admin-management-box { background-color: white; padding: 20px; border-radius: 8px; }
