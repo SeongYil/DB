@@ -1,3 +1,5 @@
+/* css/layout.css */
+
 /* --- 전체 레이아웃 --- */
 #viewer-container {
     display: flex;
@@ -21,14 +23,17 @@
     box-sizing: border-box;
 }
 
+/* --- 여기가 수정된 부분이야! --- */
+/* .admin-layout의 높이를 부모인 #admin-container에 꽉 채우도록 변경 */
 .admin-layout {
     display: flex;
     gap: 0;
-    flex-grow: 1;
+    /* flex-grow: 1; 이 속성을 height로 대체하여 높이를 명시적으로 제어 */
+    height: 100%; /* 부모 높이의 100%를 차지하도록 설정 */
     border: 1px solid #ddd;
     border-radius: 8px;
     overflow: hidden;
-    margin-top: 20px;
+    /* margin-top: 20px; 이 여백은 더이상 필요 없으므로 제거 */
 }
 
 /* --- 헤더 --- */

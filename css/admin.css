@@ -1,3 +1,5 @@
+/* css/admin.css */
+
 #tree-container {
     width: 30%;
     min-width: 250px;
@@ -17,12 +19,14 @@
     border-bottom: 1px solid #ecf0f1;
     flex-wrap: wrap;
     gap: 10px;
+    flex-shrink: 0; /* 헤더 크기가 줄어들지 않도록 고정 */
 }
 
 #tree-root {
-    flex-grow: 1;
-    overflow: auto;
+    flex-grow: 1; /* 남은 공간을 모두 차지 */
+    overflow-y: auto; /* 내용이 넘칠 경우 이 영역에만 세로 스크롤바 표시 */
     user-select: none;
+    min-height: 0; /* flex 아이템이 올바르게 수축하도록 보장 */
 }
 
 #resizer {
@@ -37,7 +41,7 @@
     flex-grow: 1;
     background-color: #ffffff;
     padding: 20px;
-    overflow-y: auto;
+    overflow-y: auto; /* 오른쪽 편집 영역도 내용이 길어지면 자체 스크롤바 생성 */
     box-sizing: border-box;
 }
 
@@ -67,7 +71,6 @@ li.collapsed>ul { display: none; }
 #admin-email-list li { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid #ecf0f1; }
 #admin-email-list li:last-child { border-bottom: none; }
 
-/* --- 여기부터가 추가/수정된 부분이야! --- */
 /* 관리자 추가 버튼이 찌그러지는 현상 방지 */
 .input-with-button button {
     flex-shrink: 0;

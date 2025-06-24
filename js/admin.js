@@ -68,7 +68,12 @@ async function saveChanges(allDocsMap) {
             const docRef = await firebase.addDoc(firebase.collection(firebase.db, "helps"), docData);
             currentSelectedDocId = docRef.id;
         }
+        // 저장 후에는 전체 문서를 다시 불러와서 state를 최신화하고 트리를 다시 그림
+        const snapshot = await firebase.getDocs(firebase.collection(firebase.db, "helps"));
+        allDocsMap.clear();
+        snapshot.forEach(doc => allDocsMap.set(doc.id, { id: doc.id, data: doc.data(), children: [] }));
         await buildAndRenderTree(allDocsMap);
+
     } catch (error) {
         console.error("저장 중 오류 발생:", error);
         ui.showModalAlert("저장에 실패했습니다.");
@@ -94,7 +99,11 @@ async function deleteDocument(allDocsMap) {
             try {
                 await firebase.deleteDoc(firebase.doc(firebase.db, "helps", currentSelectedDocId));
                 getDOMElements().editorContent.innerHTML = '<p class="info-text">왼쪽 트리에서 항목을 선택하거나, 새 문서를 추가하세요.</p>';
+                
+                // 문서 삭제 후 allDocsMap에서도 해당 항목을 제거
+                allDocsMap.delete(currentSelectedDocId);
                 currentSelectedDocId = null;
+
                 await buildAndRenderTree(allDocsMap);
             } catch (error) {
                 console.error("삭제 중 오류 발생:", error);
@@ -182,21 +191,19 @@ function updateParentDisplay(parentIds, allDocsMap) {
 // --- 트리 뷰 관리 ---
 async function buildAndRenderTree(allDocsMap) {
     const { treeRoot } = getDOMElements();
-    treeRoot.innerHTML = '<p class="info-text">데이터 로딩 중...</p>';
+    treeRoot.innerHTML = '<p class="info-text">트리 구조를 만드는 중...</p>';
     try {
-        const snapshot = await firebase.getDocs(firebase.collection(firebase.db, "helps"));
-        if (snapshot.empty) {
-            treeRoot.innerHTML = '<p class="info-text">데이터가 없습니다.</p>';
+        if (allDocsMap.size === 0) {
+            treeRoot.innerHTML = '<p class="info-text">표시할 데이터가 없습니다.</p>';
             return;
         }
-        allDocsMap.clear();
-        snapshot.forEach(doc => allDocsMap.set(doc.id, { id: doc.id, data: doc.data(), children: [] }));
+        
         const tree = buildTreeFromMap(allDocsMap);
         tree.sort((a, b) => a.data.title.localeCompare(b.data.title, 'ko'));
         treeRoot.innerHTML = '';
         const rootUl = document.createElement('ul');
         treeRoot.appendChild(rootUl);
-        renderTree(tree, rootUl, false, [], allDocsMap);
+        renderTree(tree, rootUl, false, [], allDocsMap, new Set());
 
         if (currentSelectedDocId && document.getElementById('parent-display')) {
             const docData = allDocsMap.get(currentSelectedDocId)?.data;
@@ -208,23 +215,73 @@ async function buildAndRenderTree(allDocsMap) {
     }
 }
 
+// --- 여기가 수정된 부분이야! ---
+// 고아 노드(orphan node) 처리 로직을 강화하여 더 안정적으로 트리를 생성
 function buildTreeFromMap(allDocsMap) {
-    allDocsMap.forEach(node => node.children = []);
-    const tree = [];
+    // 1. 모든 노드의 자식 목록을 초기화
     allDocsMap.forEach(node => {
+        if (node) node.children = [];
+    });
+    
+    const tree = []; // 최상위 노드를 담을 배열
+
+    // 2. 각 노드를 순회하며 부모-자식 관계 설정
+    allDocsMap.forEach(node => {
+        if (!node || !node.data) return; // 데이터가 없는 노드는 건너뜀
+
         const parentIds = node.data.parentIds || [];
-        if (parentIds.length === 0) tree.push(node);
-        else parentIds.forEach(parentId => { if (allDocsMap.has(parentId)) allDocsMap.get(parentId).children.push(node); });
+
+        if (parentIds.length === 0) {
+            // 부모가 없으면 최상위 노드
+            tree.push(node);
+            return;
+        }
+
+        // 부모 ID가 하나라도 유효한지 체크
+        let hasAtLeastOneValidParent = false;
+        parentIds.forEach(parentId => {
+            const parentNode = allDocsMap.get(parentId);
+            if (parentNode) {
+                // 유효한 부모를 찾으면 자식으로 추가하고 플래그 설정
+                parentNode.children.push(node);
+                hasAtLeastOneValidParent = true;
+            } else {
+                console.warn(`문서 '${node.data.title}' (ID: ${node.id})가 존재하지 않는 부모(ID: ${parentId})를 참조합니다.`);
+            }
+        });
+
+        // 유효한 부모가 하나도 없는 경우에만 최상위 노드로 취급 (고아 노드)
+        if (!hasAtLeastOneValidParent) {
+            tree.push(node);
+        }
     });
+
+    // 3. 자식 목록 중복 제거 및 정렬
     allDocsMap.forEach(node => {
-        if (node.children.length > 1) node.children = Array.from(new Map(node.children.map(c => [c.id, c])).values());
-        if (node.children.length > 0) node.children.sort((a, b) => a.data.title.localeCompare(b.data.title, 'ko'));
+        if (node && node.children && node.children.length > 1) {
+            node.children = Array.from(new Map(node.children.map(c => [c.id, c])).values());
+        }
+        if (node && node.children && node.children.length > 0) {
+            node.children.sort((a, b) => a.data.title.localeCompare(b.data.title, 'ko'));
+        }
     });
+
     return tree;
 }
 
-function renderTree(nodes, container, isModal, checkedIds, allDocsMap) {
+
+// 순환 참조를 추적하기 위해 ancestorPath 매개변수 추가
+function renderTree(nodes, container, isModal, checkedIds, allDocsMap, ancestorPath) {
     nodes.forEach(node => {
+        // 순환 참조 감지: 현재 노드가 조상 경로에 이미 있으면 더 이상 진행하지 않음
+        if (ancestorPath.has(node.id)) {
+            console.warn(`순환 참조가 발견되었습니다. ID: ${node.id}, 제목: ${node.data.title}. 이 하위 트리는 렌더링하지 않습니다.`);
+            return; // 현재 노드의 렌더링을 건너뜀
+        }
+        
+        // 현재 노드를 조상 경로에 추가하여 자식 노드로 전달
+        const newAncestorPath = new Set(ancestorPath).add(node.id);
+
         const listItem = document.createElement('li');
         const hasChildren = node.children && node.children.length > 0;
         const itemContainer = document.createElement('div');
@@ -292,11 +349,13 @@ function renderTree(nodes, container, isModal, checkedIds, allDocsMap) {
         if (hasChildren) {
             const childrenContainer = document.createElement('ul');
             listItem.appendChild(childrenContainer);
-            renderTree(node.children, childrenContainer, isModal, checkedIds, allDocsMap);
+            // 재귀 호출 시, 새로운 조상 경로(newAncestorPath)를 전달
+            renderTree(node.children, childrenContainer, isModal, checkedIds, allDocsMap, newAncestorPath);
         }
         container.appendChild(listItem);
     });
 }
+
 
 async function handleDrop(e, allDocsMap) {
     e.preventDefault(); e.stopPropagation(); e.target.classList.remove('drop-target');
@@ -317,19 +376,31 @@ async function handleDrop(e, allDocsMap) {
     }
 
     try {
-        await firebase.updateDoc(firebase.doc(firebase.db, "helps", draggedDocId), { parentIds: [newParentId] });
-        await buildAndRenderTree(allDocsMap);
+        const draggedDoc = allDocsMap.get(draggedDocId);
+        if (draggedDoc) {
+             // 기존 부모를 유지할지, 완전히 새로운 부모로 바꿀지에 대한 정책 필요
+             // 여기서는 드롭한 대상을 유일한 부모로 설정
+            draggedDoc.data.parentIds = [newParentId];
+            await firebase.updateDoc(firebase.doc(firebase.db, "helps", draggedDocId), { parentIds: [newParentId] });
+            await buildAndRenderTree(allDocsMap);
+        }
     } catch (error) {
         console.error("부모 변경 중 오류:", error);
         ui.showModalAlert("부모를 변경하는 데 실패했습니다.");
     }
 }
 
-function filterTree(nodes, filterText) {
+function filterTree(nodes, filterText, ancestorPath = new Set()) {
     const filteredNodes = [];
     for (const node of nodes) {
+        if (ancestorPath.has(node.id)) {
+            // 필터링 중에도 순환참조 방지
+            continue;
+        }
+        const newAncestorPath = new Set(ancestorPath).add(node.id);
+        
         let matches = node.data.title.toLowerCase().includes(filterText);
-        let children = (node.children && node.children.length > 0) ? filterTree(node.children, filterText) : [];
+        let children = (node.children && node.children.length > 0) ? filterTree(node.children, filterText, newAncestorPath) : [];
         if (matches || children.length > 0) {
             filteredNodes.push({ ...node, children: children });
         }
@@ -358,68 +429,170 @@ function setupParentSelectorModal(currentParentIds, allDocsMap) {
         const tree = buildTreeFromMap(allDocsMap);
         tree.sort((a, b) => a.data.title.localeCompare(b.data.title, 'ko'));
         const filteredTree = filterText ? filterTree(tree, filterText.toLowerCase()) : tree;
-        renderTree(filteredTree, rootUl, true, currentParentIds, allDocsMap);
+        renderTree(filteredTree, rootUl, true, currentParentIds, allDocsMap, new Set());
     };
     renderModalTree();
     searchInput.addEventListener('input', () => renderModalTree(searchInput.value));
 }
 
-// --- 관리자/공지 관리 ---
-async function openAdminManagementUI() {
+// --- 관리자/공지 관리 (역할 기반으로 수정) ---
+
+// 역할에 따라 관리자 페이지의 버튼 표시 여부를 결정하는 함수
+function updateAdminButtonVisibility(role) {
+    const noticeBtn = document.getElementById('edit-global-notice-button');
+    const adminBtn = document.getElementById('manage-admins-button');
+
+    if (!noticeBtn || !adminBtn) return;
+
+    if (role === 'owner') {
+        noticeBtn.style.display = 'inline-block';
+        adminBtn.style.display = 'inline-block';
+    } else { // 'editor' 또는 다른 경우는 숨김
+        noticeBtn.style.display = 'none';
+        adminBtn.style.display = 'none';
+    }
+}
+
+async function openAdminManagementUI(currentUserRole) {
+    // Owner만 접근 가능하도록 제한
+    if (currentUserRole !== 'owner') {
+        ui.showModalAlert('이 기능에 접근할 권한이 없습니다.');
+        return;
+    }
+    
     ui.closeModal();
-    const fetchedAdmins = await fetchAdmins();
-    const adminList = Array.isArray(fetchedAdmins) ? fetchedAdmins : [];
+    const authorizedUsers = await fetchAuthorizedUsers();
+    
+    const userListHTML = Object.entries(authorizedUsers).length > 0 
+        ? Object.entries(authorizedUsers).map(([email, role]) => `
+            <li>
+                <div class="user-info">
+                    <span class="email">${email}</span>
+                    <span class="role-badge ${role}">${role}</span>
+                </div>
+                <div class="user-actions">
+                    <select class="role-select" data-email="${email}">
+                        <option value="owner" ${role === 'owner' ? 'selected' : ''}>Owner</option>
+                        <option value="editor" ${role === 'editor' ? 'selected' : ''}>Editor</option>
+                    </select>
+                    <button class="remove-user-btn" data-email="${email}">삭제</button>
+                </div>
+            </li>`).join('')
+        : '<li>등록된 관리자가 없습니다.</li>';
+
     const modalContentHTML = `
-        <h3>관리자 권한 설정</h3><div class="admin-management-box">
-        <div class="form-group"><label>새 관리자 이메일 추가</label><div class="input-with-button"><input type="email" id="new-admin-email-modal" placeholder="admin@google.com"><button id="add-admin-btn-modal">추가</button></div></div>
-        <div class="form-group"><label>현재 관리자 목록</label><ul id="admin-email-list">${adminList.length > 0 ? adminList.map(e => `<li><span>${e}</span><button class="remove-admin-btn" data-email="${e}">삭제</button></li>`).join('') : '<li>등록된 관리자가 없습니다.</li>'}</ul></div>
-        </div>`;
+        <h3>관리자 권한 설정</h3>
+        <div class="admin-management-box">
+            <div class="form-group">
+                <label>새 관리자 추가</label>
+                <div class="input-with-button">
+                    <input type="email" id="new-admin-email-modal" placeholder="admin@example.com">
+                    <select id="new-admin-role-select">
+                        <option value="editor">Editor</option>
+                        <option value="owner">Owner</option>
+                    </select>
+                    <button id="add-admin-btn-modal">추가</button>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>현재 관리자 목록</label>
+                <ul id="admin-user-list">${userListHTML}</ul>
+            </div>
+        </div>
+        <style>
+            #admin-user-list { list-style: none; padding: 0; max-height: 250px; overflow-y: auto; }
+            #admin-user-list li { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid #ecf0f1; }
+            .user-info { display: flex; flex-direction: column; }
+            .user-info .email { font-weight: bold; }
+            .role-badge { font-size: 12px; padding: 2px 6px; border-radius: 10px; color: white; margin-top: 4px; text-transform: capitalize; }
+            .role-badge.owner { background-color: #8e44ad; }
+            .role-badge.editor { background-color: #2980b9; }
+            .user-actions { display: flex; align-items: center; gap: 10px; }
+            .role-select { padding: 5px; border-radius: 4px; }
+            .remove-user-btn { background-color: #c0392b; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; }
+        </style>
+    `;
+
     ui.showModal({ content: modalContentHTML, id: 'admin-management-modal' });
 
     const modalNode = document.getElementById('admin-management-modal');
-    modalNode.querySelector('#add-admin-btn-modal').addEventListener('click', addAdminEmail);
-    modalNode.querySelectorAll('.remove-admin-btn').forEach(btn => btn.addEventListener('click', (e) => removeAdminEmail(e)));
+    modalNode.querySelector('#add-admin-btn-modal').addEventListener('click', () => addUser(currentUserRole));
+    modalNode.querySelectorAll('.role-select').forEach(select => select.addEventListener('change', (e) => updateUserRole(e, currentUserRole)));
+    modalNode.querySelectorAll('.remove-user-btn').forEach(btn => btn.addEventListener('click', (e) => removeUser(e, currentUserRole)));
 }
 
-async function fetchAdmins() {
+
+async function fetchAuthorizedUsers() {
     try {
         const docSnap = await firebase.getDoc(firebase.doc(firebase.db, 'admins', 'authorized_users'));
-        return docSnap.exists() ? docSnap.data().emails || [] : [];
-    } catch (error) { console.error("관리자 목록 로딩 에러:", error); return []; }
-}
-
-async function addAdminEmail() {
-    const input = document.getElementById('new-admin-email-modal');
-    const email = input.value.trim();
-    if (!email) return;
-    if (!email.toLowerCase().endsWith('@gmail.com')) {
-        ui.showModalAlert("구글 이메일 주소(@gmail.com)만 관리자로 추가할 수 있습니다."); return;
-    }
-    try {
-        await firebase.updateDoc(firebase.doc(firebase.db, 'admins', 'authorized_users'), { emails: firebase.arrayUnion(email) });
-        await openAdminManagementUI(); // Refresh the modal
+        return docSnap.exists() ? docSnap.data().users || {} : {};
     } catch (error) {
-        if (error.code === 'not-found') {
-            await firebase.setDoc(firebase.doc(firebase.db, 'admins', 'authorized_users'), { emails: [email] });
-            await openAdminManagementUI();
-        } else { console.error("관리자 추가 에러:", error); ui.showModalAlert("관리자 추가에 실패했습니다."); }
+        console.error("관리자 목록 로딩 에러:", error);
+        return {};
     }
 }
 
-async function removeAdminEmail(event) {
+async function updateUser(usersData, currentUserRole) {
+    try {
+        await firebase.setDoc(firebase.doc(firebase.db, 'admins', 'authorized_users'), { users: usersData });
+        await openAdminManagementUI(currentUserRole); // UI 새로고침
+    } catch (error) {
+        console.error("관리자 정보 업데이트 에러:", error);
+        ui.showModalAlert("관리자 정보 업데이트에 실패했습니다.");
+    }
+}
+
+async function addUser(currentUserRole) {
+    const emailInput = document.getElementById('new-admin-email-modal');
+    const roleSelect = document.getElementById('new-admin-role-select');
+    const email = emailInput.value.trim();
+    const role = roleSelect.value;
+
+    if (!email) { ui.showModalAlert("이메일을 입력하세요."); return; }
+    
+    const users = await fetchAuthorizedUsers();
+    if (users[email]) {
+        ui.showModalAlert("이미 등록된 이메일입니다.");
+        return;
+    }
+    users[email] = role;
+    await updateUser(users, currentUserRole);
+}
+
+async function updateUserRole(event, currentUserRole) {
     const email = event.target.dataset.email;
-    if (!email) return;
+    const newRole = event.target.value;
+    const users = await fetchAuthorizedUsers();
+    if (users[email]) {
+        users[email] = newRole;
+        await updateUser(users, currentUserRole);
+    }
+}
+
+async function removeUser(event, currentUserRole) {
+    const emailToRemove = event.target.dataset.email;
+    
+    const self = firebase.auth.currentUser;
+    if (self && self.email === emailToRemove) {
+        ui.showModalAlert("자기 자신을 삭제할 수 없습니다.");
+        return;
+    }
+
     ui.showModal({
-        content: `<p style="margin-top:0;">'${email}' 관리자를 정말 삭제하시겠습니까?</p>`, confirmText: '삭제', confirmId: 'modal-confirm-delete',
+        content: `<p style="margin-top:0;">'${emailToRemove}' 사용자를 정말 삭제하시겠습니까?</p>`,
+        confirmText: '삭제',
+        confirmId: 'modal-confirm-delete',
         onConfirm: async () => {
-            try {
-                await firebase.updateDoc(firebase.doc(firebase.db, 'admins', 'authorized_users'), { emails: firebase.arrayRemove(email) });
-                ui.closeModal();
-                await openAdminManagementUI();
-            } catch (error) { console.error("관리자 삭제 에러:", error); ui.showModalAlert("관리자 삭제에 실패했습니다."); }
+            const users = await fetchAuthorizedUsers();
+            if (users[emailToRemove]) {
+                delete users[emailToRemove];
+                await updateUser(users, currentUserRole);
+            }
+            ui.closeModal();
         }
     });
 }
+
 
 async function loadGlobalNoticeEditor() {
     const { editorContent } = getDOMElements();
@@ -455,7 +628,9 @@ async function saveGlobalNotice() {
 }
 
 // --- 모드 전환 및 리사이저 ---
-function toggleMode() {
+function toggleMode(role) { // 이제 role을 인자로 받음
+    if (!role) return; // 역할이 없으면 관리자 모드 진입 불가
+
     const viewerContainer = document.getElementById('viewer-container');
     const adminContainer = document.getElementById('admin-container');
     const toggleBtn = document.getElementById('mode-toggle-btn');
@@ -465,6 +640,8 @@ function toggleMode() {
         viewerContainer.style.display = 'none';
         adminContainer.style.display = 'flex';
         if (toggleBtn) toggleBtn.textContent = '뷰어 모드로';
+        
+        updateAdminButtonVisibility(role); // 역할에 따라 버튼 표시여부 결정
         document.dispatchEvent(new CustomEvent('requestAdminTreeRender'));
     } else {
         document.dispatchEvent(new CustomEvent('requestViewerMode'));
