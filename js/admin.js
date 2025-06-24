@@ -371,7 +371,7 @@ async function openAdminManagementUI() {
     const adminList = Array.isArray(fetchedAdmins) ? fetchedAdmins : [];
     const modalContentHTML = `
         <h3>관리자 권한 설정</h3><div class="admin-management-box">
-        <div class="form-group"><label>새 관리자 이메일 추가</label><div class="input-with-button"><input type="email" id="new-admin-email-modal" placeholder="admin@example.com"><button id="add-admin-btn-modal">추가</button></div></div>
+        <div class="form-group"><label>새 관리자 이메일 추가</label><div class="input-with-button"><input type="email" id="new-admin-email-modal" placeholder="admin@google.com"><button id="add-admin-btn-modal">추가</button></div></div>
         <div class="form-group"><label>현재 관리자 목록</label><ul id="admin-email-list">${adminList.length > 0 ? adminList.map(e => `<li><span>${e}</span><button class="remove-admin-btn" data-email="${e}">삭제</button></li>`).join('') : '<li>등록된 관리자가 없습니다.</li>'}</ul></div>
         </div>`;
     ui.showModal({ content: modalContentHTML, id: 'admin-management-modal' });

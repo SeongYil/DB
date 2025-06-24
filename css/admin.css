@@ -61,9 +61,14 @@ li.collapsed>ul { display: none; }
 
 /* Admin Management Box */
 .admin-management-box { background-color: white; padding: 20px; border-radius: 8px; }
-.input-with-button { display: flex; gap: 10px; }
+.input-with-button { display: flex; gap: 10px; align-items: center; }
 .input-with-button input { flex-grow: 1; }
 #admin-email-list { list-style-type: none; padding: 0; margin-top: 10px; max-height: 200px; overflow-y: auto; }
 #admin-email-list li { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid #ecf0f1; }
 #admin-email-list li:last-child { border-bottom: none; }
 
+/* --- 여기부터가 추가/수정된 부분이야! --- */
+/* 관리자 추가 버튼이 찌그러지는 현상 방지 */
+.input-with-button button {
+    flex-shrink: 0;
+}
