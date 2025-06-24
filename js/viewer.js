@@ -12,7 +12,9 @@ function getDOMElements() {
     };
 }
 
-function renderBreadcrumbs() {
+// --- 여기가 수정된 부분이야! ---
+// renderBreadcrumbs 함수가 allDocsMap을 인자로 받도록 수정
+function renderBreadcrumbs(allDocsMap) {
     const { breadcrumbContainer } = getDOMElements();
     breadcrumbContainer.innerHTML = '';
     if (!breadcrumbTrail || breadcrumbTrail.length === 0) return;
@@ -31,9 +33,16 @@ function renderBreadcrumbs() {
                 element.className = 'breadcrumb-item';
                 element.textContent = item.title;
                 element.href = '#';
+                // --- 여기가 수정된 부분이야! ---
+                // navigateTo 호출 시 allDocsMap을 전달하도록 수정
                 element.onclick = (e) => {
                     e.preventDefault();
-                    navigateTo(item.id, item.title);
+                    // 'Home' 링크(id가 null)를 클릭했을 때도 올바르게 동작하도록 수정
+                    if (item.id === null) {
+                        navigateTo(allDocsMap, null, 'Home');
+                    } else {
+                        navigateTo(allDocsMap, item.id, item.title);
+                    }
                 };
             }
             pathContainer.appendChild(element);
@@ -47,6 +56,7 @@ function renderBreadcrumbs() {
         breadcrumbContainer.appendChild(pathContainer);
     });
 }
+
 
 async function buildAllBreadcrumbPaths(allDocsMap, startDocId) {
     if (!db) return [];
@@ -71,7 +81,7 @@ async function buildAllBreadcrumbPaths(allDocsMap, startDocId) {
 }
 
 async function navigateTo(allDocsMap, docId, docTitle) {
-    const { viewerMainContent, viewerResults, breadcrumbContainer } = getDOMElements();
+    const { viewerMainContent, viewerResults } = getDOMElements();
     if (!db) return;
 
     if (docId) {
@@ -79,7 +89,9 @@ async function navigateTo(allDocsMap, docId, docTitle) {
     } else {
         breadcrumbTrail = [[{ id: null, title: 'Home' }]];
     }
-    renderBreadcrumbs();
+    // --- 여기가 수정된 부분이야! ---
+    // renderBreadcrumbs 함수에 allDocsMap을 전달
+    renderBreadcrumbs(allDocsMap);
 
     viewerMainContent.innerHTML = '';
     viewerResults.innerHTML = '<p class="info-text">목록을 불러오는 중...</p>';
