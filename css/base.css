@@ -35,3 +35,7 @@ h4 {
     text-align: center;
     padding: 20px;
 }
+
+* {
+    caret-color: transparent;
+}
