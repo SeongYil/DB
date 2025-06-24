@@ -36,6 +36,15 @@ h4 {
     padding: 20px;
 }
 
+
+/* 모든 요소의 텍스트 커서(캐럿)를 기본적으로 투명하게 만듭니다 */
 * {
     caret-color: transparent;
+}
+
+/* 하지만, 텍스트를 입력하는 모든 <input>과 <textarea>에서는 커서가 보이도록 예외 처리 */
+/* 이렇게 하면 네가 말한 모든 입력창에서 커서가 정상적으로 보여. */
+input,
+textarea {
+    caret-color: auto; /* 커서 색상을 브라우저 기본값으로 되돌림 */
 }
