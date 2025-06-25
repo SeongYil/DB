@@ -154,7 +154,6 @@ export async function navigateTo(allDocsMap, docId, docTitle, currentUserRole) {
     }
 }
 
-// --- 여기가 수정된 부분입니다 ---
 export async function performSearch() {
     const { searchInput, viewerMainContent, viewerResults, breadcrumbContainer } = getDOMElements();
     if (!db) return;
@@ -178,17 +177,15 @@ export async function performSearch() {
     const results = snapshot.docs.map(doc => ({ id: doc.id, data: doc.data() })).sort((a, b) => a.data.title.localeCompare(b.data.title, 'ko'));
     const regex = new RegExp(searchTerm.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'gi');
 
+    // --- 여기가 수정된 부분입니다 ---
     results.forEach(doc => {
         const data = doc.data;
         const resultItem = document.createElement('div');
         resultItem.className = 'result-item';
 
         const highlightedTitle = data.title.replace(regex, `<mark class="highlight">$&</mark>`);
-
-        // 원본 내용 전체에 하이라이트를 적용합니다. 텍스트를 자르지 않습니다.
         const highlightedContents = (data.contents || '').replace(regex, `<mark class="highlight">$&</mark>`);
 
-        // 최종 HTML 구성 시, 내용을 CSS로 제어할 수 있도록 div로 한번 감싸줍니다.
         resultItem.innerHTML = `
             <h3>${highlightedTitle}</h3>
             <div class="search-result-snippet">${highlightedContents}</div>
@@ -198,10 +195,18 @@ export async function performSearch() {
         `;
         
         resultItem.onclick = () => document.dispatchEvent(new CustomEvent('navigateToDoc', { detail: { id: doc.id, title: data.title } }));
+        
+        // 1. 화면에 먼저 추가합니다.
         viewerResults.appendChild(resultItem);
+
+        // 2. 내용이 넘치는지 확인하고, 넘치는 경우에만 클래스를 추가합니다.
+        const snippetDiv = resultItem.querySelector('.search-result-snippet');
+        if (snippetDiv && snippetDiv.scrollHeight > snippetDiv.clientHeight) {
+            snippetDiv.classList.add('is-overflowing');
+        }
     });
+    // --- 수정 끝 ---
 }
-// --- 수정 끝 ---
 
 export async function loadGlobalLeftMargin() {
     const { leftMarginContainer } = getDOMElements();
