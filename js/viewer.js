@@ -1,5 +1,3 @@
-// --- 여기가 수정된 부분입니다 ---
-// '../firebase.js' -> './firebase.js' 로 경로를 수정했습니다.
 import { db, getDocs, getDoc, collection, query, where, doc } from './firebase.js';
 
 let breadcrumbTrail = [];
@@ -118,9 +116,7 @@ export async function navigateTo(allDocsMap, docId, docTitle, currentUserRole) {
                 };
                 titleContainer.appendChild(editButton);
             }
-
-            // --- 여기가 수정된 부분입니다 ---
-            // innerHTML += 대신, DOM 요소를 만들어 추가하는 방식으로 변경하여 버튼이 사라지는 버그를 수정합니다.
+            
             const contentDiv = document.createElement('div');
             contentDiv.innerHTML = data.contents || '내용이 없습니다.';
             
@@ -158,6 +154,7 @@ export async function navigateTo(allDocsMap, docId, docTitle, currentUserRole) {
     }
 }
 
+// --- 여기가 수정된 부분입니다 ---
 export async function performSearch() {
     const { searchInput, viewerMainContent, viewerResults, breadcrumbContainer } = getDOMElements();
     if (!db) return;
@@ -185,14 +182,26 @@ export async function performSearch() {
         const data = doc.data;
         const resultItem = document.createElement('div');
         resultItem.className = 'result-item';
+
         const highlightedTitle = data.title.replace(regex, `<mark class="highlight">$&</mark>`);
-        const snippet = (data.contents || '').substring(0, 150) + '...';
-        const highlightedContents = snippet.replace(regex, `<mark class="highlight">$&</mark>`);
-        resultItem.innerHTML = `<h3>${highlightedTitle}</h3><div>${highlightedContents}</div><p style="margin-top: 10px; font-size: 12px; color: #7f8c8d;">매칭 키워드: ${data.keywords.filter(k => k.toLowerCase().includes(searchTermLower)).join(', ')}</p>`;
+
+        // 원본 내용 전체에 하이라이트를 적용합니다. 텍스트를 자르지 않습니다.
+        const highlightedContents = (data.contents || '').replace(regex, `<mark class="highlight">$&</mark>`);
+
+        // 최종 HTML 구성 시, 내용을 CSS로 제어할 수 있도록 div로 한번 감싸줍니다.
+        resultItem.innerHTML = `
+            <h3>${highlightedTitle}</h3>
+            <div class="search-result-snippet">${highlightedContents}</div>
+            <p style="margin-top: 10px; font-size: 12px; color: #7f8c8d;">
+                매칭 키워드: ${data.keywords.filter(k => k.toLowerCase().includes(searchTermLower)).join(', ')}
+            </p>
+        `;
+        
         resultItem.onclick = () => document.dispatchEvent(new CustomEvent('navigateToDoc', { detail: { id: doc.id, title: data.title } }));
         viewerResults.appendChild(resultItem);
     });
 }
+// --- 수정 끝 ---
 
 export async function loadGlobalLeftMargin() {
     const { leftMarginContainer } = getDOMElements();
