@@ -182,28 +182,37 @@ export async function performSearch() {
         const data = doc.data;
         const resultItem = document.createElement('div');
         resultItem.className = 'result-item';
-
+        
         const highlightedTitle = data.title.replace(regex, `<mark class="highlight">$&</mark>`);
         const highlightedContents = (data.contents || '').replace(regex, `<mark class="highlight">$&</mark>`);
 
+        // 1. 보이지 않는 임시 div를 만들어 내용의 실제 높이를 측정합니다.
+        const measurementDiv = document.createElement('div');
+        measurementDiv.style.position = 'absolute';
+        measurementDiv.style.visibility = 'hidden';
+        measurementDiv.style.width = '100%'; // 너비는 최종 컨테이너와 유사하게 설정
+        measurementDiv.innerHTML = highlightedContents;
+        // 실제 DOM에 붙여야 정확한 측정이 가능합니다.
+        document.body.appendChild(measurementDiv);
+        const isContentOverflowing = measurementDiv.scrollHeight > 120; // 120px는 CSS의 max-height 값
+        // 측정이 끝나면 바로 제거합니다.
+        document.body.removeChild(measurementDiv);
+        
+        // 2. 측정 결과에 따라 조건부로 클래스를 부여합니다.
+        const snippetClass = isContentOverflowing
+            ? 'search-result-snippet is-overflowing'
+            : 'search-result-snippet';
+
         resultItem.innerHTML = `
             <h3>${highlightedTitle}</h3>
-            <div class="search-result-snippet">${highlightedContents}</div>
+            <div class="${snippetClass}">${highlightedContents}</div>
             <p style="margin-top: 10px; font-size: 12px; color: #7f8c8d;">
                 매칭 키워드: ${data.keywords.filter(k => k.toLowerCase().includes(searchTermLower)).join(', ')}
             </p>
         `;
         
         resultItem.onclick = () => document.dispatchEvent(new CustomEvent('navigateToDoc', { detail: { id: doc.id, title: data.title } }));
-        
-        // 1. 화면에 먼저 추가합니다.
         viewerResults.appendChild(resultItem);
-
-        // 2. 내용이 넘치는지 확인하고, 넘치는 경우에만 클래스를 추가합니다.
-        const snippetDiv = resultItem.querySelector('.search-result-snippet');
-        if (snippetDiv && snippetDiv.scrollHeight > snippetDiv.clientHeight) {
-            snippetDiv.classList.add('is-overflowing');
-        }
     });
     // --- 수정 끝 ---
 }

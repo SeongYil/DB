@@ -94,14 +94,15 @@
 .search-category-header { margin-top: 25px; margin-bottom: 15px; font-size: 1.1em; font-weight: bold; color: #2c3e50; border-bottom: 2px solid #ecf0f1; padding-bottom: 8px; }
 .search-result-separator { margin: 40px 0; border: 0; height: 1px; background-image: linear-gradient(to right, rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.25), rgba(0, 0, 0, 0)); }
 
+/* --- 여기가 수정된 부분입니다 --- */
 .search-result-snippet {
-    max-height: 100px;
+    /* 최대 높이를 120px로 늘려 더 많은 내용을 보여줍니다. */
+    max-height: 120px;
     overflow: hidden;
     position: relative;
 }
+/* --- 수정 끝 --- */
 
-/* --- 여기가 수정된 부분입니다 --- */
-/* .is-overflowing 클래스가 있을 때만 흐릿한 효과를 적용합니다. */
 .search-result-snippet.is-overflowing::after {
     content: '';
     position: absolute;
@@ -111,7 +112,6 @@
     height: 45px;
     background: linear-gradient(to bottom, rgba(249, 249, 249, 0), #f9f9f9 80%);
 }
-/* --- 수정 끝 --- */
 
 .search-result-snippet .file-path-container {
     flex-wrap: nowrap;
