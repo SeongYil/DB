@@ -69,5 +69,17 @@
 
 /* --- 기타 컴포넌트 --- */
 .file-path-container { display: flex; align-items: center; background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 8px 12px; margin: 8px 0; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 14px; }
-.path-text { color: #495057; flex-grow: 1; overflow-x: auto; white-space: nowrap; scrollbar-width: thin; }
+
+/* --- 여기가 수정된 부분입니다 --- */
+/* .path-text의 기본 스타일을 스크롤 가능한 상태로 되돌립니다. */
+.path-text {
+    color: #495057;
+    flex-grow: 1;
+    overflow-x: auto;
+    white-space: nowrap;
+    scrollbar-width: thin;
+    min-width: 0;
+}
+/* --- 수정 끝 --- */
+
 .highlight { background-color: #f1c40f; color: #333; font-weight: bold; padding: 2px 4px; border-radius: 3px; }
