@@ -31,8 +31,8 @@ function getDOMElements() {
     };
 }
 
-// --- 여기가 수정된 부분이야! (1/2) ---
-// 여러 경로를 접고 펼 수 있는 기능으로 renderBreadcrumbs 함수를 수정했어.
+// --- 여기가 수정된 부분이야! ---
+// 이제 기본으로 경로를 3개까지 보여주도록 수정했어.
 function renderBreadcrumbs() {
     const { breadcrumbContainer } = getDOMElements();
     breadcrumbContainer.innerHTML = '';
@@ -68,38 +68,46 @@ function renderBreadcrumbs() {
         return pathContainer;
     };
 
-    // 항상 첫 번째 경로(대표 경로)는 표시해.
-    breadcrumbContainer.appendChild(createPathElement(breadcrumbTrail[0]));
+    const initialVisibleCount = 5; // 기본으로 보여줄 경로의 수
+    const totalPaths = breadcrumbTrail.length;
 
-    // 경로가 2개 이상일 때만 '경로 더보기' 기능을 추가했어.
-    if (breadcrumbTrail.length > 1) {
+    // 최대 5개까지의 경로를 먼저 표시해.
+    const pathsToShowInitially = Math.min(totalPaths, initialVisibleCount);
+    for (let i = 0; i < pathsToShowInitially; i++) {
+        breadcrumbContainer.appendChild(createPathElement(breadcrumbTrail[i]));
+    }
+
+    // 경로가 5개를 초과할 때만 '더보기' 버튼을 만들어.
+    if (totalPaths > initialVisibleCount) {
+        const remainingPathsCount = totalPaths - initialVisibleCount;
+
         const toggleContainer = document.createElement('div');
         toggleContainer.className = 'breadcrumb-toggle-container';
 
         const moreButton = document.createElement('a');
         moreButton.href = '#';
         moreButton.className = 'breadcrumb-more-btn';
-        moreButton.textContent = `+ ${breadcrumbTrail.length - 1}개 경로 더보기`;
+        moreButton.textContent = `+ ${remainingPathsCount}개 경로 더보기`;
         toggleContainer.appendChild(moreButton);
 
         const otherPathsContainer = document.createElement('div');
         otherPathsContainer.className = 'breadcrumb-other-paths';
-        otherPathsContainer.style.display = 'none'; // 기본적으로 숨김
+        otherPathsContainer.style.display = 'none'; // 기본 숨김
 
-        // 나머지 경로들을 숨겨진 컨테이너에 추가해.
-        for (let i = 1; i < breadcrumbTrail.length; i++) {
+        // 나머지 경로들을 숨겨진 컨테이너에 추가.
+        for (let i = initialVisibleCount; i < totalPaths; i++) {
             otherPathsContainer.appendChild(createPathElement(breadcrumbTrail[i]));
         }
         
         toggleContainer.appendChild(otherPathsContainer);
         breadcrumbContainer.appendChild(toggleContainer);
 
-        // 더보기 버튼 클릭 이벤트를 설정했어.
+        // 더보기 버튼 클릭 이벤트.
         moreButton.onclick = (e) => {
             e.preventDefault();
             const isHidden = otherPathsContainer.style.display === 'none';
             otherPathsContainer.style.display = isHidden ? 'block' : 'none';
-            moreButton.textContent = isHidden ? '▲ 경로 접기' : `+ ${breadcrumbTrail.length - 1}개 경로 더보기`;
+            moreButton.textContent = isHidden ? '▲ 경로 접기' : `+ ${remainingPathsCount}개 경로 더보기`;
         };
     }
 }
@@ -143,8 +151,6 @@ export async function navigateTo(allDocsMap, docId, docTitle, currentUserRole) {
     } else {
         breadcrumbTrail = [[{ id: null, title: 'Home' }]];
     }
-    // --- 여기가 수정된 부분이야! (2/2) ---
-    // 파라미터 없이 renderBreadcrumbs를 호출하도록 수정했어.
     renderBreadcrumbs();
 
     viewerMainContent.innerHTML = '';
