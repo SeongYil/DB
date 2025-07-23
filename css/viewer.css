@@ -69,6 +69,34 @@
 .breadcrumb-separator { margin: 0 10px; color: #7f8c8d; }
 .breadcrumb-current { color: #34495e; font-weight: bold; }
 
+/* --- 여기가 추가된 부분이야! --- */
+/* 경로 더보기 기능에 대한 스타일을 추가했어. */
+.breadcrumb-toggle-container {
+    margin-top: 8px;
+}
+.breadcrumb-more-btn {
+    font-size: 13px;
+    font-weight: bold;
+    color: #566573;
+    text-decoration: none;
+    cursor: pointer;
+    display: inline-block;
+    padding: 4px 8px;
+    background-color: #e9ecef;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+}
+.breadcrumb-more-btn:hover {
+    background-color: #d4d8db;
+    text-decoration: none;
+}
+.breadcrumb-other-paths {
+    margin-top: 8px;
+    padding-left: 15px;
+    border-left: 2px solid #e0e0e0;
+}
+/* --- --- */
+
 #mainContentContainer {
     padding-bottom: 20px;
     margin-bottom: 20px;
@@ -94,15 +122,11 @@
 .search-category-header { margin-top: 25px; margin-bottom: 15px; font-size: 1.1em; font-weight: bold; color: #2c3e50; border-bottom: 2px solid #ecf0f1; padding-bottom: 8px; }
 .search-result-separator { margin: 40px 0; border: 0; height: 1px; background-image: linear-gradient(to right, rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.25), rgba(0, 0, 0, 0)); }
 
-/* --- 여기가 수정된 부분입니다 --- */
 .search-result-snippet {
-    /* 최대 높이를 120px로 늘려 더 많은 내용을 보여줍니다. */
     max-height: 120px;
     overflow: hidden;
     position: relative;
 }
-/* --- 수정 끝 --- */
-
 .search-result-snippet.is-overflowing::after {
     content: '';
     position: absolute;

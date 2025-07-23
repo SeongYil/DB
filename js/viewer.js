@@ -2,37 +2,24 @@ import { db, getDocs, getDoc, collection, query, where, doc } from './firebase.j
 
 let breadcrumbTrail = [];
 
-// --- 여기가 수정된 부분이야! (1/3) ---
-// 문자열 내의 숫자를 인식하여 정렬하는 함수를 추가했어.
 function naturalCompare(a, b) {
-    // 정규식을 사용해서 문자열을 숫자와 문자 부분으로 나눕니다.
     const re = /(\d+)/g;
     const aParts = a.split(re);
     const bParts = b.split(re);
     const len = Math.min(aParts.length, bParts.length);
-
     for (let i = 0; i < len; i++) {
         const aPart = aParts[i];
         const bPart = bParts[i];
-
-        // 파트가 숫자인 경우 (정규식에서 캡처된 부분)
         if (i % 2 === 1) { 
             const aNum = parseInt(aPart, 10);
             const bNum = parseInt(bPart, 10);
-            if (aNum !== bNum) {
-                return aNum - bNum;
-            }
-        } else { // 파트가 문자인 경우
-            if (aPart !== bPart) {
-                return aPart.localeCompare(bPart, 'ko');
-            }
+            if (aNum !== bNum) return aNum - bNum;
+        } else {
+            if (aPart !== bPart) return aPart.localeCompare(bPart, 'ko');
         }
     }
-
-    // 모든 부분이 동일하면, 더 짧은 문자열이 앞에 오도록 합니다.
     return aParts.length - bParts.length;
 }
-
 
 function getDOMElements() {
     return {
@@ -44,12 +31,14 @@ function getDOMElements() {
     };
 }
 
-function renderBreadcrumbs(allDocsMap) {
+// --- 여기가 수정된 부분이야! (1/2) ---
+// 여러 경로를 접고 펼 수 있는 기능으로 renderBreadcrumbs 함수를 수정했어.
+function renderBreadcrumbs() {
     const { breadcrumbContainer } = getDOMElements();
     breadcrumbContainer.innerHTML = '';
     if (!breadcrumbTrail || breadcrumbTrail.length === 0) return;
-    
-    breadcrumbTrail.forEach(path => {
+
+    const createPathElement = (path) => {
         const pathContainer = document.createElement('div');
         pathContainer.className = 'breadcrumb-path';
         path.forEach((item, index) => {
@@ -76,9 +65,45 @@ function renderBreadcrumbs(allDocsMap) {
                 pathContainer.appendChild(separator);
             }
         });
-        breadcrumbContainer.appendChild(pathContainer);
-    });
+        return pathContainer;
+    };
+
+    // 항상 첫 번째 경로(대표 경로)는 표시해.
+    breadcrumbContainer.appendChild(createPathElement(breadcrumbTrail[0]));
+
+    // 경로가 2개 이상일 때만 '경로 더보기' 기능을 추가했어.
+    if (breadcrumbTrail.length > 1) {
+        const toggleContainer = document.createElement('div');
+        toggleContainer.className = 'breadcrumb-toggle-container';
+
+        const moreButton = document.createElement('a');
+        moreButton.href = '#';
+        moreButton.className = 'breadcrumb-more-btn';
+        moreButton.textContent = `+ ${breadcrumbTrail.length - 1}개 경로 더보기`;
+        toggleContainer.appendChild(moreButton);
+
+        const otherPathsContainer = document.createElement('div');
+        otherPathsContainer.className = 'breadcrumb-other-paths';
+        otherPathsContainer.style.display = 'none'; // 기본적으로 숨김
+
+        // 나머지 경로들을 숨겨진 컨테이너에 추가해.
+        for (let i = 1; i < breadcrumbTrail.length; i++) {
+            otherPathsContainer.appendChild(createPathElement(breadcrumbTrail[i]));
+        }
+        
+        toggleContainer.appendChild(otherPathsContainer);
+        breadcrumbContainer.appendChild(toggleContainer);
+
+        // 더보기 버튼 클릭 이벤트를 설정했어.
+        moreButton.onclick = (e) => {
+            e.preventDefault();
+            const isHidden = otherPathsContainer.style.display === 'none';
+            otherPathsContainer.style.display = isHidden ? 'block' : 'none';
+            moreButton.textContent = isHidden ? '▲ 경로 접기' : `+ ${breadcrumbTrail.length - 1}개 경로 더보기`;
+        };
+    }
 }
+
 
 async function buildAllBreadcrumbPaths(allDocsMap, startDocId, ancestorPath) {
     if (ancestorPath.has(startDocId)) {
@@ -118,7 +143,9 @@ export async function navigateTo(allDocsMap, docId, docTitle, currentUserRole) {
     } else {
         breadcrumbTrail = [[{ id: null, title: 'Home' }]];
     }
-    renderBreadcrumbs(allDocsMap);
+    // --- 여기가 수정된 부분이야! (2/2) ---
+    // 파라미터 없이 renderBreadcrumbs를 호출하도록 수정했어.
+    renderBreadcrumbs();
 
     viewerMainContent.innerHTML = '';
     viewerResults.innerHTML = '<p class="info-text">목록을 불러오는 중...</p>';
@@ -175,8 +202,6 @@ export async function navigateTo(allDocsMap, docId, docTitle, currentUserRole) {
     if (snapshot.empty) {
         viewerResults.innerHTML = '<p class="info-text">하위 항목이 없습니다.</p>';
     } else {
-        // --- 여기가 수정된 부분이야! (2/3) ---
-        // 하위 문서 목록을 정렬할 때도 naturalCompare 함수를 사용하도록 변경했어.
         const childDocs = snapshot.docs.map(doc => ({ id: doc.id, data: doc.data() })).sort((a, b) => naturalCompare(a.data.title, b.data.title));
         childDocs.forEach(child => {
             const resultItem = document.createElement('div');
@@ -208,8 +233,6 @@ export async function performSearch() {
         return;
     }
 
-    // --- 여기가 수정된 부분이야! (3/3) ---
-    // 검색 결과를 정렬할 때도 naturalCompare 함수를 사용하도록 변경했어.
     const results = snapshot.docs.map(doc => ({ id: doc.id, data: doc.data() })).sort((a, b) => naturalCompare(a.data.title, b.data.title));
     const regex = new RegExp(searchTerm.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'gi');
 
