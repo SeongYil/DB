@@ -2,6 +2,38 @@ import { db, getDocs, getDoc, collection, query, where, doc } from './firebase.j
 
 let breadcrumbTrail = [];
 
+// --- 여기가 수정된 부분이야! (1/3) ---
+// 문자열 내의 숫자를 인식하여 정렬하는 함수를 추가했어.
+function naturalCompare(a, b) {
+    // 정규식을 사용해서 문자열을 숫자와 문자 부분으로 나눕니다.
+    const re = /(\d+)/g;
+    const aParts = a.split(re);
+    const bParts = b.split(re);
+    const len = Math.min(aParts.length, bParts.length);
+
+    for (let i = 0; i < len; i++) {
+        const aPart = aParts[i];
+        const bPart = bParts[i];
+
+        // 파트가 숫자인 경우 (정규식에서 캡처된 부분)
+        if (i % 2 === 1) { 
+            const aNum = parseInt(aPart, 10);
+            const bNum = parseInt(bPart, 10);
+            if (aNum !== bNum) {
+                return aNum - bNum;
+            }
+        } else { // 파트가 문자인 경우
+            if (aPart !== bPart) {
+                return aPart.localeCompare(bPart, 'ko');
+            }
+        }
+    }
+
+    // 모든 부분이 동일하면, 더 짧은 문자열이 앞에 오도록 합니다.
+    return aParts.length - bParts.length;
+}
+
+
 function getDOMElements() {
     return {
         viewerMainContent: document.getElementById('mainContentContainer'),
@@ -143,7 +175,9 @@ export async function navigateTo(allDocsMap, docId, docTitle, currentUserRole) {
     if (snapshot.empty) {
         viewerResults.innerHTML = '<p class="info-text">하위 항목이 없습니다.</p>';
     } else {
-        const childDocs = snapshot.docs.map(doc => ({ id: doc.id, data: doc.data() })).sort((a, b) => a.data.title.localeCompare(b.data.title, 'ko'));
+        // --- 여기가 수정된 부분이야! (2/3) ---
+        // 하위 문서 목록을 정렬할 때도 naturalCompare 함수를 사용하도록 변경했어.
+        const childDocs = snapshot.docs.map(doc => ({ id: doc.id, data: doc.data() })).sort((a, b) => naturalCompare(a.data.title, b.data.title));
         childDocs.forEach(child => {
             const resultItem = document.createElement('div');
             resultItem.className = 'result-item';
@@ -174,10 +208,11 @@ export async function performSearch() {
         return;
     }
 
-    const results = snapshot.docs.map(doc => ({ id: doc.id, data: doc.data() })).sort((a, b) => a.data.title.localeCompare(b.data.title, 'ko'));
+    // --- 여기가 수정된 부분이야! (3/3) ---
+    // 검색 결과를 정렬할 때도 naturalCompare 함수를 사용하도록 변경했어.
+    const results = snapshot.docs.map(doc => ({ id: doc.id, data: doc.data() })).sort((a, b) => naturalCompare(a.data.title, b.data.title));
     const regex = new RegExp(searchTerm.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'gi');
 
-    // --- 여기가 수정된 부분입니다 ---
     results.forEach(doc => {
         const data = doc.data;
         const resultItem = document.createElement('div');
@@ -186,19 +221,15 @@ export async function performSearch() {
         const highlightedTitle = data.title.replace(regex, `<mark class="highlight">$&</mark>`);
         const highlightedContents = (data.contents || '').replace(regex, `<mark class="highlight">$&</mark>`);
 
-        // 1. 보이지 않는 임시 div를 만들어 내용의 실제 높이를 측정합니다.
         const measurementDiv = document.createElement('div');
         measurementDiv.style.position = 'absolute';
         measurementDiv.style.visibility = 'hidden';
-        measurementDiv.style.width = '100%'; // 너비는 최종 컨테이너와 유사하게 설정
+        measurementDiv.style.width = '100%';
         measurementDiv.innerHTML = highlightedContents;
-        // 실제 DOM에 붙여야 정확한 측정이 가능합니다.
         document.body.appendChild(measurementDiv);
-        const isContentOverflowing = measurementDiv.scrollHeight > 120; // 120px는 CSS의 max-height 값
-        // 측정이 끝나면 바로 제거합니다.
+        const isContentOverflowing = measurementDiv.scrollHeight > 120;
         document.body.removeChild(measurementDiv);
         
-        // 2. 측정 결과에 따라 조건부로 클래스를 부여합니다.
         const snippetClass = isContentOverflowing
             ? 'search-result-snippet is-overflowing'
             : 'search-result-snippet';
@@ -214,7 +245,6 @@ export async function performSearch() {
         resultItem.onclick = () => document.dispatchEvent(new CustomEvent('navigateToDoc', { detail: { id: doc.id, title: data.title } }));
         viewerResults.appendChild(resultItem);
     });
-    // --- 수정 끝 ---
 }
 
 export async function loadGlobalLeftMargin() {
